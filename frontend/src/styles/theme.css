@@ -1,0 +1,123 @@
+/* KDE Breeze-inspired color tokens. Names mirror Breeze's own palette roles
+   so the values can later be swapped for values read from the live Plasma
+   color scheme (see docs/design.md). */
+
+:root,
+:root[data-theme='light'] {
+  --window-bg: #eff0f1;
+  --view-bg: #fbfcfc;
+  --view-bg-alt: #f3f4f5;
+  --sidebar-bg: #e7e8ea;
+  --header-bg: #e2e3e5;
+  --border-color: #c3c6c9;
+  --separator-color: #d4d6d8;
+
+  --text-color: #232629;
+  --text-color-secondary: #5c6166;
+  --disabled-text-color: #a7abaf;
+
+  --accent-color: #3daee9;
+  --accent-color-hover: #2a9fdb;
+  --accent-text-color: #ffffff;
+
+  --highlight-bg: #3daee9;
+  --highlight-text: #ffffff;
+  --hover-bg: rgba(0, 0, 0, 0.06);
+  --active-bg: rgba(61, 174, 233, 0.18);
+
+  --focus-ring: #2a9fdb;
+
+  --success-color: #27ae60;
+  --warning-color: #f39c12;
+  --warning-bg: rgba(243, 156, 18, 0.16);
+  --warning-bg-hover: rgba(243, 156, 18, 0.24);
+  --error-color: #da4453;
+
+  --terminal-bg: #232629;
+  --terminal-fg: #eff0f1;
+
+  --scrollbar-thumb: rgba(0, 0, 0, 0.25);
+  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.4);
+
+  --shadow-color: rgba(0, 0, 0, 0.18);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --window-bg: #2a2e32;
+    --view-bg: #232629;
+    --view-bg-alt: #2c3034;
+    --sidebar-bg: #262a2d;
+    --header-bg: #2c3034;
+    --border-color: #1b1e20;
+    --separator-color: #3a3f43;
+
+    --text-color: #eff0f1;
+    --text-color-secondary: #b0b4b8;
+    --disabled-text-color: #6b7075;
+
+    --accent-color: #3daee9;
+    --accent-color-hover: #58b8ec;
+    --accent-text-color: #ffffff;
+
+    --highlight-bg: #3daee9;
+    --highlight-text: #ffffff;
+    --hover-bg: rgba(255, 255, 255, 0.08);
+    --active-bg: rgba(61, 174, 233, 0.22);
+
+    --focus-ring: #58b8ec;
+
+    --success-color: #2ecc71;
+    --warning-color: #f5b041;
+    --warning-bg: rgba(245, 176, 65, 0.16);
+    --warning-bg-hover: rgba(245, 176, 65, 0.24);
+    --error-color: #ed6a5e;
+
+    --terminal-bg: #1b1e20;
+    --terminal-fg: #eff0f1;
+
+    --scrollbar-thumb: rgba(255, 255, 255, 0.18);
+    --scrollbar-thumb-hover: rgba(255, 255, 255, 0.3);
+
+    --shadow-color: rgba(0, 0, 0, 0.5);
+  }
+}
+
+:root[data-theme='dark'] {
+  --window-bg: #2a2e32;
+  --view-bg: #232629;
+  --view-bg-alt: #2c3034;
+  --sidebar-bg: #262a2d;
+  --header-bg: #2c3034;
+  --border-color: #1b1e20;
+  --separator-color: #3a3f43;
+
+  --text-color: #eff0f1;
+  --text-color-secondary: #b0b4b8;
+  --disabled-text-color: #6b7075;
+
+  --accent-color: #3daee9;
+  --accent-color-hover: #58b8ec;
+  --accent-text-color: #ffffff;
+
+  --highlight-bg: #3daee9;
+  --highlight-text: #ffffff;
+  --hover-bg: rgba(255, 255, 255, 0.08);
+  --active-bg: rgba(61, 174, 233, 0.22);
+
+  --focus-ring: #58b8ec;
+
+  --success-color: #2ecc71;
+  --warning-color: #f5b041;
+  --warning-bg: rgba(245, 176, 65, 0.16);
+  --warning-bg-hover: rgba(245, 176, 65, 0.24);
+  --error-color: #ed6a5e;
+
+  --terminal-bg: #1b1e20;
+  --terminal-fg: #eff0f1;
+
+  --scrollbar-thumb: rgba(255, 255, 255, 0.18);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.3);
+
+  --shadow-color: rgba(0, 0, 0, 0.5);
+}

@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=SSH First
+GenericName=SSH & SFTP Client
+Comment=A focused SSH and SFTP workspace
+Exec=ssh-first
+Icon=ssh-first
+Terminal=false
+Categories=Network;RemoteAccess;GTK;
+Keywords=ssh;sftp;terminal;remote;shell;
+StartupNotify=true
+StartupWMClass=ssh-first

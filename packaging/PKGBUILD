@@ -1,0 +1,46 @@
+# Maintainer: Julian <juwolf11@googlemail.com>
+pkgname=ssh-first
+pkgver=0.2.1a
+pkgrel=1
+pkgdesc="A focused SSH and SFTP workspace"
+arch=('x86_64')
+url="https://github.com/junet-1"
+license=('MIT')
+# Runtime: the default Wails v3 backend links GTK4 + WebKitGTK 6.0.
+depends=('gtk4' 'webkitgtk-6.0')
+makedepends=('go' 'nodejs' 'npm' 'pkgconf')
+optdepends=('rsync: file transfers (SFTP sync)'
+            'gnome-keyring: password storage via the Secret Service API'
+            'kwallet: password storage via the Secret Service API (KDE)')
+# Built in-tree from this checkout (frontend bindings are committed, so wails3
+# is not needed at package time). No remote source.
+source=()
+
+build() {
+  cd "$startdir/.."
+
+  # Frontend: install deps and produce frontend/dist (embedded into the binary).
+  ( cd frontend && npm ci && npm run build )
+
+  # Production binary. CGO must be on for the GTK/WebKit bridge; default build
+  # tags select the GTK4 + webkitgtk-6.0 backend.
+  export CGO_ENABLED=1
+  export GOFLAGS="-mod=readonly -modcacherw"
+  go build -trimpath -buildvcs=false -tags production -ldflags='-w -s' \
+    -o build/bin/ssh-first .
+}
+
+package() {
+  cd "$startdir/.."
+
+  install -Dm755 build/bin/ssh-first "$pkgdir/usr/bin/ssh-first"
+
+  # Application-menu entry + icons (pixmaps is the guaranteed fallback for the
+  # Icon=ssh-first name; hicolor carries the full-res icon for HiDPI themes).
+  install -Dm644 packaging/ssh-first.desktop "$pkgdir/usr/share/applications/ssh-first.desktop"
+  install -Dm644 build/appicon.png "$pkgdir/usr/share/pixmaps/ssh-first.png"
+  install -Dm644 build/appicon.png "$pkgdir/usr/share/icons/hicolor/1024x1024/apps/ssh-first.png"
+
+  # Start automatically on login for every user, straight from install.
+  install -Dm644 packaging/ssh-first-autostart.desktop "$pkgdir/etc/xdg/autostart/ssh-first.desktop"
+}

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=SSH First
+Comment=Start SSH First on login
+Exec=ssh-first
+Icon=ssh-first
+Terminal=false
+StartupWMClass=ssh-first
+X-GNOME-Autostart-enabled=true

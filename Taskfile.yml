@@ -1,0 +1,57 @@
+version: '3'
+
+vars:
+  APP_NAME: ssh-first
+  OUTPUT_DIR: build/bin
+
+tasks:
+  generate:bindings:
+    summary: Regenerates the typed Wails v3 frontend bindings
+    cmds:
+      - wails3 generate bindings -ts -b -clean=true -d frontend/bindings .
+
+  frontend:install:
+    summary: Installs frontend dependencies when needed
+    dir: frontend
+    sources:
+      - package.json
+      - package-lock.json
+    generates:
+      - node_modules/**/*
+    cmds:
+      - npm install
+
+  frontend:build:
+    summary: Type-checks and builds the Svelte frontend
+    dir: frontend
+    deps:
+      - task: frontend:install
+      - task: generate:bindings
+    cmds:
+      - npm run check
+      - npm run build
+
+  build:
+    summary: Builds SSH First for the current platform
+    cmds:
+      - task: '{{OS}}:build'
+
+  linux:build:
+    summary: Builds the production Linux binary
+    deps:
+      - task: frontend:build
+    cmds:
+      - mkdir -p {{.OUTPUT_DIR}}
+      - go build -trimpath -buildvcs=false -tags '{{.BUILD_TAGS}}' -ldflags='-w -s' -o {{.OUTPUT_DIR}}/{{.APP_NAME}} .
+    vars:
+      BUILD_TAGS: 'production{{if .EXTRA_TAGS}},{{.EXTRA_TAGS}}{{end}}'
+    env:
+      CGO_ENABLED: '1'
+      GOARCH: '{{.ARCH | default ARCH}}'
+
+  linux:run:
+    summary: Runs the built Linux binary
+    deps:
+      - task: linux:build
+    cmds:
+      - '{{.OUTPUT_DIR}}/{{.APP_NAME}}'

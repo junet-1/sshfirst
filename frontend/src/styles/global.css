@@ -1,0 +1,143 @@
+@import './theme.css';
+
+:root {
+  --workspace-header-height: 38px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden; /* the shell manages its own scroll regions, never the page */
+}
+
+body {
+  font-family: 'Noto Sans', 'Cantarell', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-size: 13px;
+  color: var(--text-color);
+  background: var(--window-bg);
+  -webkit-font-smoothing: antialiased;
+  user-select: none; /* desktop-app default; inputs/terminal opt back in */
+}
+
+input,
+textarea,
+.selectable {
+  user-select: text;
+}
+
+#app {
+  height: 100%;
+  width: 100%;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  background: var(--view-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  padding: 3px 10px;
+  cursor: pointer;
+  line-height: 1.4;
+}
+
+button:hover:not(:disabled) {
+  background: var(--hover-bg);
+}
+
+button:disabled {
+  color: var(--disabled-text-color);
+  cursor: not-allowed;
+}
+
+button.primary {
+  background: var(--accent-color);
+  border-color: var(--accent-color-hover);
+  color: var(--accent-text-color);
+}
+
+button.primary:hover:not(:disabled) {
+  background: var(--accent-color-hover);
+}
+
+input[type='text'],
+input[type='number'],
+input[type='password'],
+input[type='search'],
+select,
+textarea {
+  background: var(--view-bg);
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  padding: 3px 6px;
+}
+
+/* WebKitGTK renders <select> with the native GTK widget (ignoring our
+   background/color) unless appearance is explicitly reset; same for the
+   spin buttons on <input type="number">, which we replace with nothing
+   (no native theme leaking through) and keep the OS's own for now. */
+select {
+  -webkit-appearance: none;
+  appearance: none;
+  padding-right: 24px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath d='M4 6l4 4 4-4' fill='none' stroke='%235c6166' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+}
+
+select:disabled {
+  color: var(--disabled-text-color);
+}
+
+option {
+  background: var(--view-bg);
+  color: var(--text-color);
+}
+
+/* Visible keyboard focus everywhere; no browser default outline suppression
+   without a replacement. */
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 5px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+  background-clip: padding-box;
+}
+
+hr,
+.separator {
+  border: none;
+  border-top: 1px solid var(--separator-color);
+  margin: 0;
+}
