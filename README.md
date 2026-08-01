@@ -116,3 +116,4 @@ cd frontend && npm run check
   security warning, not a routine prompt).
 - SSH First maintains its own `known_hosts` file rather than touching
   `~/.ssh/known_hosts`, so it can't corrupt your system SSH client's state.
+# sshfirst
