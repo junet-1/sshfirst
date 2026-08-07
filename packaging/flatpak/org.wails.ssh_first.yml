@@ -64,6 +64,17 @@ modules:
         /app/share/applications/org.wails.ssh_first.desktop
       - install -Dm644 org.wails.ssh_first.metainfo.xml
         /app/share/metainfo/org.wails.ssh_first.metainfo.xml
+      # appstreamcli compose, which flatpak-builder runs during export, only
+      # looks for the icon in the standard hicolor sizes. A lone 1024x1024
+      # entry is invisible to it and the export dies with "E: icon-not-found",
+      # so ship 64 and 128 as well. The release workflow scales these from
+      # build/appicon.png before the build starts.
+      - install -Dm644 appicon-64.png
+        /app/share/icons/hicolor/64x64/apps/org.wails.ssh_first.png
+      - install -Dm644 appicon-128.png
+        /app/share/icons/hicolor/128x128/apps/org.wails.ssh_first.png
+      - install -Dm644 appicon-256.png
+        /app/share/icons/hicolor/256x256/apps/org.wails.ssh_first.png
       - install -Dm644 appicon.png
         /app/share/icons/hicolor/1024x1024/apps/org.wails.ssh_first.png
     sources:
@@ -75,3 +86,9 @@ modules:
         path: org.wails.ssh_first.metainfo.xml
       - type: file
         path: appicon.png
+      - type: file
+        path: appicon-64.png
+      - type: file
+        path: appicon-128.png
+      - type: file
+        path: appicon-256.png

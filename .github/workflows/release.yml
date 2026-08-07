@@ -301,7 +301,13 @@ jobs:
           sudo -E apt-get install -y --no-install-recommends \
             -o DPkg::Lock::Timeout=300 \
             libgtk-4-1 libwebkitgtk-6.0-4 libfuse2t64 \
-            librsvg2-common gstreamer1.0-plugins-base
+            librsvg2-common gstreamer1.0-plugins-base \
+            libgtk-4-dev pkg-config
+          # linuxdeploy-plugin-gtk resolves the GTK module and typelib paths
+          # with `pkg-config --variable=libdir gtk4`, so it needs gtk4.pc from
+          # the -dev package even though nothing here is compiled. Without it
+          # the plugin aborts with "there is no 'libdir' variable for 'gtk4'".
+          pkg-config --variable=libdir gtk4
 
       - name: Stage AppDir
         run: |
@@ -418,7 +424,7 @@ jobs:
         run: |
           sudo -E apt-get update -qq
           sudo -E apt-get install -y --no-install-recommends \
-            -o DPkg::Lock::Timeout=300 flatpak flatpak-builder
+            -o DPkg::Lock::Timeout=300 flatpak flatpak-builder imagemagick
           # Ubuntu 24.04 confines unprivileged user namespaces with AppArmor,
           # which stops the bubblewrap call flatpak-builder makes.
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
@@ -439,6 +445,16 @@ jobs:
           cp dist/stage/share/applications/org.wails.ssh_first.desktop packaging/flatpak/
           cp dist/stage/share/metainfo/org.wails.ssh_first.metainfo.xml packaging/flatpak/
           cp build/appicon.png packaging/flatpak/appicon.png
+
+          # appstreamcli compose ignores the 1024x1024 original, so scale the
+          # sizes it actually looks for. ImageMagick 7 renamed convert to
+          # magick; Ubuntu 24.04 still ships 6, so accept either.
+          im=$(command -v magick || command -v convert)
+          for size in 64 128 256; do
+            "$im" build/appicon.png -resize "${size}x${size}" \
+              "packaging/flatpak/appicon-${size}.png"
+          done
+          file packaging/flatpak/appicon-*.png
 
       - name: Build bundle
         run: |

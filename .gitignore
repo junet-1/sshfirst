@@ -18,6 +18,7 @@
 # can pick them up as local file: sources.
 /packaging/flatpak/ssh-first
 /packaging/flatpak/appicon.png
+/packaging/flatpak/appicon-*.png
 /packaging/flatpak/org.wails.ssh_first.desktop
 /packaging/flatpak/org.wails.ssh_first.metainfo.xml
 
