@@ -4,7 +4,7 @@ package platform
 
 // noopNotifier is the placeholder for platforms without a native
 // notification integration yet (Windows/macOS support is planned but not
-// implemented — see docs/design.md).
+// implemented).
 type noopNotifier struct{}
 
 // NewNotifier returns a no-op notifier on non-Linux platforms.

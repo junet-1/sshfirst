@@ -6,7 +6,7 @@
 
 **A fast, native SSH, SFTP and admin-panel workspace for Linux.**
 
-All your servers in one window — terminals, file transfers, tunnels and web
+All your servers in one window: terminals, file transfers, tunnels and web
 control panels, side by side. Local-first, no account, no cloud.
 
 <p>
@@ -22,12 +22,11 @@ control panels, side by side. Local-first, no account, no cloud.
 <a href="#keyboard-shortcuts">Shortcuts</a> ·
 <a href="#security">Security</a>
 
-</div>
+<br>
 
-<!--
-  Screenshots: drop images into assets/ and uncomment.
-  <p align="center"><img src="assets/screenshot-main.png" alt="SSH First main window" width="900"></p>
--->
+<img src="preview/SplitView.png" alt="SSH First with three SSH sessions in a split layout" width="900">
+
+</div>
 
 ---
 
@@ -36,18 +35,18 @@ control panels, side by side. Local-first, no account, no cloud.
 Managing a handful of servers usually means a terminal here, a file manager
 there, a browser tab for the router, and a sticky note for the ports. SSH First
 puts all of it into one desktop application that feels like it belongs on your
-system — not like a website in a window.
+system, not like a website in a window.
 
-- **One window for everything** — SSH terminals, SFTP file browsing and web
-  control panels (Proxmox, Portainer, Grafana, Nginx Proxy Manager, …) as tabs
-  next to each other.
-- **Your existing setup just works** — SSH First reads your `~/.ssh/config`,
-  so your hosts, aliases and jump hosts are there on first launch.
-- **Local-first and private** — no account, no telemetry, no sync server.
+- **One window for everything.** SSH terminals, SFTP file browsing and web
+  control panels (Proxmox, Portainer, Grafana, Nginx Proxy Manager, and others)
+  as tabs next to each other.
+- **Your existing setup just works.** SSH First reads your `~/.ssh/config`, so
+  your hosts, aliases and jump hosts are there on first launch.
+- **Local-first and private.** No account, no telemetry, no sync server.
   Everything lives on your machine.
-- **Native, not a browser tab** — a real desktop app with a system menu,
-  system-tray support, light/dark theme following your desktop, and English
-  and German interface languages.
+- **Native, not a browser tab.** A real desktop app with a system menu, system
+  tray support, light and dark theme following your desktop, and English and
+  German interface languages.
 
 ## Features
 
@@ -56,37 +55,37 @@ system — not like a website in a window.
 - Import from `~/.ssh/config`, or add hosts manually
 - Organise hosts in folders and tags, with instant search
 - Password, private key and keyboard-interactive login
-- `ProxyJump` / jump-host chains
+- `ProxyJump` and jump-host chains
 - Reusable credential sets shared across many hosts
-- Automatic reconnect with a clear reconnect prompt when a link drops
+- Automatic reconnect with a clear prompt when a link drops
 
 ### Terminals
 
 - Real interactive SSH sessions, many tabs per connection
-- Split panes — arrange terminals side by side or stacked
+- Split panes to arrange terminals side by side or stacked
 - Search inside the terminal output
 - Broadcast input to all tabs at once, for fleet-wide commands
 - Snippets: save commands you run often and fire them into a session with one click
-- Per-session font size, copy the equivalent `ssh` command any time
+- Per-session font size, and copy the equivalent `ssh` command any time
 
-### Files & tunnels
+### Files and tunnels
 
 - Built-in SFTP browser with uploads, downloads and drag-and-drop transfers
-- SSH port forwarding — local (`-L`), remote (`-R`) and dynamic SOCKS5 (`-D`),
+- SSH port forwarding: local (`-L`), remote (`-R`) and dynamic SOCKS5 (`-D`),
   defined per host and toggled per connection
 
 ### Web panels
 
 - Open a server's admin panel as an embedded tab right next to its terminal
-- Loaded straight from your machine — no proxy in between
+- Loaded straight from your machine, with no proxy in between
 - One click to fall back to your normal browser for panels that refuse embedding
 
 ### Workspaces
 
-- Save a whole layout — which hosts, which terminals, which panels, in which
-  split arrangement — and restore it later
+- Save a whole layout (which hosts, which terminals, which panels, in which
+  split arrangement) and restore it later
 - Stored as plain, human-readable JSON you can keep in a dotfiles repo or share
-  with your team ([format reference](docs/workspaces.md))
+  with your team
 
 ### Comfort
 
@@ -97,9 +96,24 @@ system — not like a website in a window.
 - Light, dark, or follow the system theme
 - Interface in English and German
 
+## A look inside
+
+<table>
+<tr>
+<td width="50%" valign="top">
+<img src="preview/crtlkView.png" alt="Command palette listing open tabs, hosts and commands">
+<p align="center"><sub><b>Command palette</b><br>One shortcut reaches every tab, host and action.</sub></p>
+</td>
+<td width="50%" valign="top">
+<img src="preview/WebView.png" alt="A Checkmk web panel opened as a tab inside SSH First">
+<p align="center"><sub><b>Web panels</b><br>Admin interfaces open as tabs next to your terminals.</sub></p>
+</td>
+</tr>
+</table>
+
 ## Installation
 
-### Arch Linux / Manjaro (recommended)
+### Arch Linux and Manjaro (recommended)
 
 ```bash
 git clone https://github.com/junet-1/sshfirst.git
@@ -111,8 +125,8 @@ That installs SSH First as a regular `pacman` package: it adds an entry to your
 application menu, registers the taskbar icon, and starts the app in the system
 tray on the next login. Launching from the menu opens the main window as usual.
 
-**Optional, but recommended:** `gnome-keyring` or `kwallet` (secure password
-storage) and `rsync` (faster SFTP transfers).
+Optional but recommended: `gnome-keyring` or `kwallet` for secure password
+storage, and `rsync` for faster SFTP transfers.
 
 ### Other distributions
 
@@ -128,17 +142,17 @@ taskbar picks up the installed entry.
 ## Getting started
 
 1. **Launch SSH First** from your application menu.
-2. **Your hosts appear automatically** if you have a `~/.ssh/config` — otherwise
+2. **Your hosts appear automatically** if you have a `~/.ssh/config`. Otherwise
    press <kbd>Ctrl</kbd>+<kbd>N</kbd> to add one.
 3. **Double-click a host** to open a terminal. The first connection asks you to
-   confirm the server's host key — this is expected and only happens once per host.
-4. **Add a second tab** with <kbd>Ctrl</kbd>+<kbd>T</kbd>, open the file browser
-   or a web panel from the host's context menu.
+   confirm the server's host key. This is expected and only happens once per host.
+4. **Add a second tab** with <kbd>Ctrl</kbd>+<kbd>T</kbd>, and open the file
+   browser or a web panel from the host's context menu.
 5. **Save the arrangement as a workspace** once you like it, and reopen it in one
    step tomorrow.
 
 Passwords and passphrases you choose to save go into your desktop's keyring
-(GNOME Keyring or KWallet) — never into a file on disk.
+(GNOME Keyring or KWallet), never into a file on disk.
 
 ## Keyboard shortcuts
 
@@ -161,15 +175,15 @@ Passwords and passphrases you choose to save go into your desktop's keyring
 ## Security
 
 - **Secrets stay in the keyring.** Passwords and private-key passphrases are
-  never written to the database or to log files — they live only in the Linux
-  Secret Service (GNOME Keyring / KWallet).
+  never written to the database or to log files. They live only in the Linux
+  Secret Service (GNOME Keyring or KWallet).
 - **Host key verification is mandatory.** Unknown keys need explicit
-  confirmation; a *changed* key is shown as a security warning, not a routine
-  prompt.
+  confirmation, and a *changed* key is shown as a security warning rather than a
+  routine prompt.
 - **Your system SSH stays untouched.** SSH First keeps its own `known_hosts`
   file and reads `~/.ssh/config` read-only, so it cannot corrupt your regular
   SSH client's state.
-- **No network calls of its own.** No accounts, no telemetry, no sync service —
+- **No network calls of its own.** No accounts, no telemetry, no sync service.
   SSH First only talks to the servers you tell it to.
 
 ## Your data
@@ -183,13 +197,8 @@ Everything SSH First stores lives in one place:
 └── known_hosts                      (separate from ~/.ssh/known_hosts)
 ```
 
-Back up that folder and you have backed up your setup. Passwords are not in it —
+Back up that folder and you have backed up your setup. Passwords are not in it,
 they are in your keyring.
-
-## Documentation
-
-- [UX and architecture decisions](docs/design.md)
-- [Workspace file format](docs/workspaces.md)
 
 ## Building from source
 
@@ -218,7 +227,7 @@ The binary is written to `build/bin/ssh-first`.
 ### Legacy GTK3 fallback
 
 Wails v3 uses GTK4 and WebKitGTK 6.0 by default. On systems with only the
-legacy GTK3 / WebKit 4.1 stack, install `gtk3 webkit2gtk-4.1` and build with:
+legacy GTK3 and WebKit 4.1 stack, install `gtk3 webkit2gtk-4.1` and build with:
 
 ```sh
 wails3 build -tags gtk3
@@ -241,9 +250,9 @@ go test ./...
 ```
 
 Covered: SSH config parsing (including `Include` and wildcard patterns), SQLite
-storage CRUD, `ProxyJump` parsing, `known_hosts` persistence/replacement, and
-Secret Service read/write/delete (against `go-keyring`'s in-memory mock, so
-tests never touch a real keyring).
+storage CRUD, `ProxyJump` parsing, `known_hosts` persistence and replacement,
+and Secret Service read/write/delete against `go-keyring`'s in-memory mock, so
+tests never touch a real keyring.
 
 ### Project layout
 
@@ -263,8 +272,7 @@ ssh-first/
 │   ├── workspace/       # Declarative workspace documents
 │   └── platform/        # Desktop notifications (D-Bus), behind an OS-agnostic interface
 ├── migrations/          # SQL schema migrations, embedded in the binary
-├── frontend/            # Svelte + TypeScript (strict) SPA, built with Vite
-└── docs/                # Design and format documentation
+└── frontend/            # Svelte + TypeScript (strict) SPA, built with Vite
 ```
 
 </details>
@@ -278,12 +286,12 @@ sessions stay alive in the main workspace and the tray.
 ## Status
 
 SSH First is in active development and used daily on Arch Linux with KDE
-Plasma. The features listed above work today; issue reports and suggestions are
-welcome.
+Plasma. The features listed above work today, and issue reports and suggestions
+are welcome.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
 
 <div align="center">
 <sub>Built for people who live in a terminal and still want a proper desktop app.</sub>
