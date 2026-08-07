@@ -56,7 +56,7 @@ jobs:
 
   # Ubuntu 24.04 is the oldest distribution shipping WebKitGTK 6.0, so it is
   # both the natural .deb target and the lowest glibc we can link against. The
-  # binary it produces is reused by the AppImage and the Flatpak.
+  # binary it produces is reused by the Flatpak job.
   build:
     name: Binary, tarball and .deb
     needs: version
@@ -197,8 +197,8 @@ jobs:
             dist/*.tar.gz
           if-no-files-found: error
 
-      # The AppImage and Flatpak jobs link against this exact binary rather
-      # than rebuilding it, so all three artifacts are the same build.
+      # The Flatpak job packages this exact binary rather than rebuilding
+      # it, so both artifacts come from the same build.
       - uses: actions/upload-artifact@v4
         with:
           name: binary-linux-amd64
@@ -276,140 +276,6 @@ jobs:
           path: dist/out/*.rpm
           if-no-files-found: error
 
-  appimage:
-    name: AppImage
-    needs: [version, build]
-    timeout-minutes: 25
-    runs-on: ubuntu-24.04
-    env:
-      VERSION: ${{ needs.version.outputs.version }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: binary-linux-amd64
-          path: build/bin
-
-      - name: Install runtime libraries to bundle
-        timeout-minutes: 10
-        env:
-          DEBIAN_FRONTEND: noninteractive
-          NEEDRESTART_MODE: a
-        run: |
-          sudo -E apt-get update -qq
-          sudo -E apt-get install -y --no-install-recommends \
-            -o DPkg::Lock::Timeout=300 \
-            libgtk-4-1 libwebkitgtk-6.0-4 libfuse2t64 \
-            librsvg2-common gstreamer1.0-plugins-base \
-            libgtk-4-dev pkg-config imagemagick
-          # linuxdeploy-plugin-gtk resolves the GTK module and typelib paths
-          # with `pkg-config --variable=libdir gtk4`, so it needs gtk4.pc from
-          # the -dev package even though nothing here is compiled. Without it
-          # the plugin aborts with "there is no 'libdir' variable for 'gtk4'".
-          pkg-config --variable=libdir gtk4
-
-      - name: Stage AppDir
-        run: |
-          set -euo pipefail
-          chmod +x build/bin/ssh-first
-          packaging/stage-tree.sh "$VERSION" build/bin/ssh-first dist/stage
-
-          # The binary itself is handed to linuxdeploy with --executable below,
-          # which is what makes it resolve and bundle the shared libraries.
-          install -Dm644 dist/stage/share/applications/org.wails.ssh_first.desktop \
-            AppDir/usr/share/applications/org.wails.ssh_first.desktop
-          install -Dm644 dist/stage/share/metainfo/org.wails.ssh_first.metainfo.xml \
-            AppDir/usr/share/metainfo/org.wails.ssh_first.metainfo.xml
-
-          # linuxdeploy validates icon directories against the freedesktop size
-          # list, which stops at 512x512, and refuses the 1024x1024 original
-          # with "invalid x resolution". The file name has to stay ssh-first.png
-          # because that is the Icon key in the desktop entry.
-          im=$(command -v magick || command -v convert)
-          for size in 64 128 256 512; do
-            "$im" build/appicon.png -resize "${size}x${size}" "dist/icon-${size}.png"
-            install -Dm644 "dist/icon-${size}.png" \
-              "AppDir/usr/share/icons/hicolor/${size}x${size}/apps/ssh-first.png"
-          done
-
-          # WebKitGTK starts helper processes out of a separate directory and
-          # loads an injected bundle from it. Neither is reachable from a
-          # relocated AppDir unless bundled and pointed at explicitly, which is
-          # what the hook below does.
-          #
-          # Where that directory lives is a distribution decision: Debian and
-          # Ubuntu use /usr/lib/<triplet>/webkitgtk-6.0, Arch uses
-          # /usr/lib/webkitgtk-6.0, others /usr/libexec/webkitgtk-6.0. Probe for
-          # the process binary instead of guessing, and fail with the actual
-          # locations listed if none of them matches.
-          webkit_dir=""
-          for candidate in /usr/libexec/webkitgtk-6.0 \
-                           /usr/lib/x86_64-linux-gnu/webkitgtk-6.0 \
-                           /usr/lib/webkitgtk-6.0; do
-            if [ -x "$candidate/WebKitWebProcess" ]; then
-              webkit_dir=$candidate
-              break
-            fi
-          done
-          if [ -z "$webkit_dir" ]; then
-            echo "::error::WebKitWebProcess not found in any known location"
-            find /usr/lib /usr/libexec -maxdepth 4 -name 'WebKit*Process' 2>/dev/null || true
-            exit 1
-          fi
-          echo "Bundling WebKitGTK helpers from $webkit_dir"
-          mkdir -p AppDir/usr/libexec/webkitgtk-6.0
-          cp -a "$webkit_dir"/. AppDir/usr/libexec/webkitgtk-6.0/
-          ls -la AppDir/usr/libexec/webkitgtk-6.0/
-
-          mkdir -p AppDir/apprun-hooks
-          cat > AppDir/apprun-hooks/webkitgtk.sh <<'HOOK'
-          export WEBKIT_EXEC_PATH="${APPDIR}/usr/libexec/webkitgtk-6.0"
-          # The injected bundle sits in a subdirectory on some distributions and
-          # directly in the versioned directory on others, so probe rather than
-          # hardcode: a wrong path here means a blank webview, not an error.
-          for candidate in "${APPDIR}"/usr/libexec/webkitgtk-6.0/injected-bundle \
-                           "${APPDIR}"/usr/libexec/webkitgtk-6.0 \
-                           "${APPDIR}"/usr/lib/*/webkitgtk-6.0/injected-bundle \
-                           "${APPDIR}"/usr/lib/*/webkitgtk-6.0; do
-            if [ -d "$candidate" ]; then
-              export WEBKIT_INJECTED_BUNDLE_PATH="$candidate"
-              break
-            fi
-          done
-          # The web content process is sandboxed with bubblewrap by default,
-          # which cannot see the mounted AppImage. Disabling it is what makes
-          # the bundled WebKit start at all.
-          export WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1
-          export WEBKIT_DISABLE_COMPOSITING_MODE=1
-          HOOK
-          chmod +x AppDir/apprun-hooks/webkitgtk.sh
-
-      - name: Build AppImage
-        run: |
-          set -euo pipefail
-          base=https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous
-          gtkplugin=https://raw.githubusercontent.com/linuxdeploy/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh
-          curl -fsSLo linuxdeploy "$base/linuxdeploy-x86_64.AppImage"
-          curl -fsSLo linuxdeploy-plugin-gtk.sh "$gtkplugin"
-          chmod +x linuxdeploy linuxdeploy-plugin-gtk.sh
-
-          export DEPLOY_GTK_VERSION=4
-          export OUTPUT="SSH_First-$VERSION-x86_64.AppImage"
-          ./linuxdeploy --appdir AppDir --plugin gtk --output appimage \
-            --executable dist/stage/bin/ssh-first \
-            --desktop-file AppDir/usr/share/applications/org.wails.ssh_first.desktop \
-            --icon-file AppDir/usr/share/icons/hicolor/256x256/apps/ssh-first.png
-
-          mkdir -p dist
-          mv "$OUTPUT" dist/
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: packages-appimage
-          path: dist/*.AppImage
-          if-no-files-found: error
-
   flatpak:
     name: Flatpak bundle
     needs: [version, build]
@@ -482,7 +348,7 @@ jobs:
 
   publish:
     name: Publish release
-    needs: [version, build, rpm, appimage, flatpak]
+    needs: [version, build, rpm, flatpak]
     if: needs.version.outputs.publish == 'true'
     timeout-minutes: 15
     runs-on: ubuntu-24.04
@@ -527,16 +393,10 @@ jobs:
           flatpak install --user ./SSH_First-${VERSION}-x86_64.flatpak
           \`\`\`
 
-          **AppImage**
-          \`\`\`sh
-          chmod +x SSH_First-${VERSION}-x86_64.AppImage
-          ./SSH_First-${VERSION}-x86_64.AppImage
-          \`\`\`
-
           **Arch Linux**: build from the checkout with \`cd packaging && makepkg -si\`.
 
           The \`.deb\`, \`.rpm\` and tarball use your distribution's GTK 4 and
-          WebKitGTK 6.0. The Flatpak and AppImage bring their own.
+          WebKitGTK 6.0. The Flatpak brings its own, so it runs anywhere.
 
           Verify downloads against \`SHA256SUMS\`.
           EOF

@@ -121,14 +121,13 @@ Grab the package for your distribution from the
 | --- | --- | --- |
 | Debian, Ubuntu 24.04+ | `ssh-first_<version>_amd64.deb` | `sudo apt install ./ssh-first_<version>_amd64.deb` |
 | Fedora, RHEL | `ssh-first-<version>-1.*.x86_64.rpm` | `sudo dnf install ./ssh-first-<version>-1.*.x86_64.rpm` |
-| Any (sandboxed) | `SSH_First-<version>-x86_64.flatpak` | `flatpak install --user ./SSH_First-<version>-x86_64.flatpak` |
-| Any (portable) | `SSH_First-<version>-x86_64.AppImage` | `chmod +x` it and run it |
+| Any other distribution | `SSH_First-<version>-x86_64.flatpak` | `flatpak install --user ./SSH_First-<version>-x86_64.flatpak` |
 | Any (manual) | `ssh-first-<version>-linux-x86_64.tar.gz` | unpack and run `./install.sh` |
 | Arch, Manjaro | build from source, see below | `cd packaging && makepkg -si` |
 
 The `.deb`, `.rpm` and the plain tarball use the GTK 4 and WebKitGTK 6.0 that
-your distribution already ships. The Flatpak and the AppImage bring their own,
-which makes them the right choice on anything older or more exotic.
+your distribution already ships. The Flatpak brings its own, which makes it the
+right choice on anything older or more exotic.
 
 Every release is checksummed in `SHA256SUMS`.
 
