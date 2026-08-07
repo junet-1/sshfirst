@@ -8,9 +8,15 @@
   import { notify } from '../stores/notifications'
   import { reconnectStates } from '../stores/reconnect'
   import type { SFTPEntry } from '../types/connection'
+  import type { Rect } from '../lib/layoutTree'
 
   export let tabId: string
-  export let active = false
+  export let visible = false
+  export let rect: Rect | null = null
+
+  $: layerStyle = rect
+    ? `left:${rect.left}%;top:${rect.top}%;width:${rect.width}%;height:${rect.height}%;right:auto;bottom:auto;`
+    : ''
 
   let currentPath = ''
   let pathInput = ''
@@ -30,7 +36,7 @@
   $: selected = selectedPath ? entries.find((entry) => entry.path === selectedPath) ?? null : null
   $: reconnectState = connection ? $reconnectStates[connection.connectionId] : null
   $: stateKey = connection?.status === 'connected' ? `${connection.connectionId}:${connection.connectedAt ?? 0}` : ''
-  $: if (active && stateKey && stateKey !== loadedStateKey) {
+  $: if (visible && stateKey && stateKey !== loadedStateKey) {
     loadedStateKey = stateKey
     void loadDirectory(currentPath || startPath, false)
   }
@@ -120,8 +126,10 @@
 
 <div
   class="sftp-pane"
-  class:active
+  class:visible
+  aria-hidden={!visible}
   aria-label={$t('sftp.browser')}
+  style={layerStyle}
 >
   <div class="browser-toolbar">
     <button title={$t('sftp.back')} disabled={!history.length || loading} on:click={goBack}><Icon name="back" /></button>
@@ -195,8 +203,8 @@
 </div>
 
 <style>
-  .sftp-pane { position: absolute; inset: 0; display: none; flex-direction: column; min-width: 0; background: var(--view-bg); color: var(--text-color); font-size: 12px; outline: none; }
-  .sftp-pane.active { display: flex; }
+  .sftp-pane { position: absolute; inset: 0; display: flex; flex-direction: column; min-width: 0; background: var(--view-bg); color: var(--text-color); font-size: 12px; outline: none; visibility: hidden; pointer-events: none; }
+  .sftp-pane.visible { visibility: visible; pointer-events: auto; }
   .browser-toolbar { display: flex; align-items: center; gap: 3px; min-height: 34px; padding: 4px 6px; background: var(--header-bg); border-bottom: 1px solid var(--border-color); }
   .browser-toolbar button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 24px; padding: 2px 7px; }
   .path-form { flex: 1; min-width: 80px; margin: 0 4px; }

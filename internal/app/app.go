@@ -22,6 +22,7 @@ import (
 	sshpkg "ssh-first/internal/ssh"
 	"ssh-first/internal/storage"
 	terminalpkg "ssh-first/internal/terminal"
+	workspacepkg "ssh-first/internal/workspace"
 )
 
 // App is the Wails-bound application backend.
@@ -36,6 +37,7 @@ type App struct {
 
 	migrations     fs.FS
 	store          *storage.Store
+	workspaces     *workspacepkg.Store
 	knownHostsPath string
 	notifier       platform.Notifier
 	trayIcon       []byte
@@ -136,6 +138,7 @@ func (a *App) ServiceStartup(ctx context.Context, _ application.ServiceOptions) 
 		return fmt.Errorf("open storage: %w", err)
 	}
 	a.store = store
+	a.workspaces = workspacepkg.New(dir)
 	a.knownHostsPath = filepath.Join(dir, "known_hosts")
 	a.notifier = platform.NewNotifier("SSH First")
 	a.startTray()

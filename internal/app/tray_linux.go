@@ -57,12 +57,13 @@ func (t *wailsTray) rebuildMenuLocked() {
 	menu.AddSeparator()
 
 	hosts, err := t.app.ListHosts()
+	visibleHosts := trayHosts(hosts)
 	if err != nil {
 		menu.Add("Connections unavailable").SetEnabled(false)
-	} else if len(hosts) == 0 {
-		menu.Add("No saved connections").SetEnabled(false)
+	} else if len(visibleHosts) == 0 {
+		menu.Add("No saved SSH connections").SetEnabled(false)
 	} else {
-		for _, host := range trayHosts(hosts) {
+		for _, host := range visibleHosts {
 			host := host
 			tooltip := host.Hostname
 			if host.User != "" {
@@ -91,7 +92,12 @@ func (t *wailsTray) rebuildMenuLocked() {
 }
 
 func trayHosts(hosts []storage.Host) []storage.Host {
-	ordered := append([]storage.Host(nil), hosts...)
+	ordered := make([]storage.Host, 0, len(hosts))
+	for _, host := range hosts {
+		if host.Protocol == storage.HostProtocolSSH || host.Protocol == storage.HostProtocolSFTP {
+			ordered = append(ordered, host)
+		}
+	}
 	sort.SliceStable(ordered, func(i, j int) bool {
 		if ordered[i].Favorite != ordered[j].Favorite {
 			return ordered[i].Favorite

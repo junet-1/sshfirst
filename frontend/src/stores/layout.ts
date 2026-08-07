@@ -41,6 +41,11 @@ function setTree(next: LayoutNode | null): void {
   layoutTree.set(next)
 }
 
+/** Applies a fully-built declarative workspace tree through the same invariants as manual splits. */
+export function applyWorkspaceLayout(next: LayoutNode | null): void {
+  setTree(next)
+}
+
 function terminalTabIds(): string[] {
   return Object.values(get(tabs))
     .filter((tab) => tab.kind === 'terminal')

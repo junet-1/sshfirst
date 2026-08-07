@@ -47,6 +47,31 @@ func (a *App) Connect(hostID int64, cols, rows int) (ConnectionInfo, error) {
 	return a.connectHost(host, false, cols, rows)
 }
 
+// ConnectWorkspaceResource opens a persisted SSH target in the mode declared
+// by a workspace leaf. The host remains the shared resource; terminal vs SFTP
+// is a layout concern and does not mutate the saved host's default protocol.
+func (a *App) ConnectWorkspaceResource(hostID int64, nodeType string, cols, rows int) (ConnectionInfo, error) {
+	if err := a.requireStore(); err != nil {
+		return ConnectionInfo{}, err
+	}
+	host, err := a.store.GetHost(hostID)
+	if err != nil {
+		return ConnectionInfo{}, err
+	}
+	if host.Protocol == storage.HostProtocolWeb {
+		return ConnectionInfo{}, fmt.Errorf("web host %q is not an SSH resource", host.Label)
+	}
+	switch nodeType {
+	case "terminal":
+		host.Protocol = storage.HostProtocolSSH
+	case "sftp":
+		host.Protocol = storage.HostProtocolSFTP
+	default:
+		return ConnectionInfo{}, fmt.Errorf("unsupported workspace node type %q", nodeType)
+	}
+	return a.connectHost(host, false, cols, rows)
+}
+
 // QuickConnect opens an ephemeral connection from an OpenSSH-style target.
 // It deliberately does not create a sidebar host or persist credentials.
 func (a *App) QuickConnect(target string, cols, rows int) (ConnectionInfo, error) {

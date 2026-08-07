@@ -8,19 +8,27 @@
     activeTabId,
     closeTab,
     closedTabs,
+    connectionAttempts,
     duplicateTab,
     connections,
     openNewTab,
     reopenLastClosedTab,
     renameTab,
+    moveTab,
+    moveTabBy,
     tabs
   } from '../stores/connections'
+  import type { TabDropPosition } from '../lib/tabOrder'
   import { broadcastActive, broadcastMembers, pruneMembers, toggleMember } from '../stores/broadcast'
   import { ensureFavicon, faviconOrigin, favicons } from '../stores/favicons'
 
   let renamingTabId: string | null = null
   let renameValue = ''
   let contextMenu: { x: number; y: number; tabId: string } | null = null
+  let draggedTabId: string | null = null
+  let dropTarget: { tabId: string; position: TabDropPosition } | null = null
+
+  const TAB_DRAG_TYPE = 'application/x-ssh-first-tab'
 
   // Browser tabs show the panel's favicon via the shared backend cache (same
   // source as the sidebar), falling back to a globe until/if it loads.
@@ -35,7 +43,7 @@
 
   function selectTab(tabId: string, connectionId: string, kind: string): void {
     activeTabId.set(tabId)
-    activeConnectionId.set(kind === 'quick-connect' || kind === 'browser' ? null : connectionId)
+    activeConnectionId.set(kind === 'quick-connect' || kind === 'browser' || kind === 'connection-attempt' ? null : connectionId)
   }
 
   function startRename(tabId: string, current: string): void {
@@ -70,19 +78,76 @@
     contextMenu = { x: event.clientX, y: event.clientY, tabId }
   }
 
+  function onTabDragStart(event: DragEvent, tabId: string): void {
+    if (renamingTabId === tabId || !event.dataTransfer) {
+      event.preventDefault()
+      return
+    }
+    const target = event.target
+    if (target instanceof Element && target.closest('button, input')) {
+      event.preventDefault()
+      return
+    }
+    draggedTabId = tabId
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData(TAB_DRAG_TYPE, tabId)
+    event.dataTransfer.setData('text/plain', tabId)
+  }
+
+  function onTabDragOver(event: DragEvent, targetTabId: string): void {
+    const sourceID = draggedTabId ?? event.dataTransfer?.getData(TAB_DRAG_TYPE) ?? ''
+    if (!sourceID || sourceID === targetTabId) {
+      dropTarget = null
+      return
+    }
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
+    const element = event.currentTarget
+    if (!(element instanceof HTMLElement)) return
+    const rect = element.getBoundingClientRect()
+    dropTarget = { tabId: targetTabId, position: event.clientX < rect.left + rect.width / 2 ? 'before' : 'after' }
+  }
+
+  function onTabDrop(event: DragEvent, targetTabId: string): void {
+    const sourceID = draggedTabId ?? event.dataTransfer?.getData(TAB_DRAG_TYPE) ?? ''
+    const position = dropTarget?.tabId === targetTabId ? dropTarget.position : 'before'
+    if (sourceID && sourceID !== targetTabId) moveTab(sourceID, targetTabId, position)
+    finishTabDrag()
+  }
+
+  function finishTabDrag(): void {
+    draggedTabId = null
+    dropTarget = null
+  }
+
+  function onTabKeydown(event: KeyboardEvent, tabId: string, connectionId: string, kind: string): void {
+    if ((event.ctrlKey || event.metaKey) && event.shiftKey && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+      event.preventDefault()
+      moveTabBy(tabId, event.key === 'ArrowLeft' ? -1 : 1)
+      return
+    }
+    if (event.key === 'Enter' || event.key === ' ') selectTab(tabId, connectionId, kind)
+  }
+
   $: contextTab = contextMenu ? $tabs[contextMenu.tabId] : null
-  $: contextItems = (contextTab?.kind === 'terminal'
-    ? [
-        { id: 'duplicate', label: $t('menu.session.duplicateTab') },
-        { id: 'reopen', label: $t('menu.session.reopenClosedTab'), disabled: $closedTabs.length === 0 },
-        { id: 'close', label: $t('menu.session.closeTab'), separatorBefore: true }
-      ]
-    : [{ id: 'close', label: $t('menu.session.closeTab') }]) satisfies ContextMenuItem[]
+  $: contextIndex = contextTab ? tabList.findIndex((tab) => tab.tabId === contextTab?.tabId) : -1
+  $: contextItems = [
+    ...(contextTab?.kind === 'terminal'
+      ? [
+          { id: 'duplicate', label: $t('menu.session.duplicateTab') },
+          { id: 'reopen', label: $t('menu.session.reopenClosedTab'), disabled: $closedTabs.length === 0 }
+        ]
+      : []),
+    { id: 'moveLeft', label: $t('tabs.moveLeft'), disabled: contextIndex <= 0, separatorBefore: contextTab?.kind === 'terminal' },
+    { id: 'moveRight', label: $t('tabs.moveRight'), disabled: contextIndex < 0 || contextIndex >= tabList.length - 1 },
+    { id: 'close', label: $t('menu.session.closeTab'), separatorBefore: true }
+  ] satisfies ContextMenuItem[]
 
   function onContextSelect(action: string): void {
     const tabId = contextMenu?.tabId
     if (action === 'duplicate' && tabId) void duplicateTab(tabId)
     else if (action === 'reopen') void reopenLastClosedTab()
+    else if (action === 'moveLeft' && tabId) moveTabBy(tabId, -1)
+    else if (action === 'moveRight' && tabId) moveTabBy(tabId, 1)
     else if (action === 'close' && tabId) void closeTab(tabId)
   }
 </script>
@@ -94,20 +159,28 @@
       class:active={$activeTabId === tab.tabId}
       class:broadcasting={$broadcastActive && $broadcastMembers.has(tab.tabId)}
       class:attention={tab.unread && $activeTabId !== tab.tabId}
+      class:dragging={draggedTabId === tab.tabId}
+      class:drop-before={dropTarget?.tabId === tab.tabId && dropTarget.position === 'before'}
+      class:drop-after={dropTarget?.tabId === tab.tabId && dropTarget.position === 'after'}
       role="tab"
       aria-selected={$activeTabId === tab.tabId}
       title={tab.bell ? `${tab.title} — terminal bell` : tab.unread ? `${tab.title} — new output` : tab.title}
-      tabindex="-1"
+      tabindex={$activeTabId === tab.tabId ? 0 : -1}
+      draggable={renamingTabId !== tab.tabId}
       on:click={() => selectTab(tab.tabId, tab.connectionId, tab.kind)}
       on:mousedown={(e) => onTabMouseDown(e, tab.tabId)}
       on:contextmenu={(e) => openContextMenu(e, tab.tabId, tab.connectionId, tab.kind)}
       on:dblclick={() => startRename(tab.tabId, tab.title)}
-      on:keydown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') selectTab(tab.tabId, tab.connectionId, tab.kind)
-      }}
+      on:dragstart={(event) => onTabDragStart(event, tab.tabId)}
+      on:dragover|preventDefault={(event) => onTabDragOver(event, tab.tabId)}
+      on:drop|preventDefault={(event) => onTabDrop(event, tab.tabId)}
+      on:dragend={finishTabDrag}
+      on:keydown={(event) => onTabKeydown(event, tab.tabId, tab.connectionId, tab.kind)}
     >
       {#if tab.kind === 'quick-connect'}
         <span class="quick-icon"><Icon name="terminal" size={11} /></span>
+      {:else if tab.kind === 'connection-attempt'}
+        <span class="dot" class:connecting={$connectionAttempts[tab.tabId]?.phase === 'connecting'} class:error={$connectionAttempts[tab.tabId]?.phase === 'failed'} />
       {:else if tab.kind === 'browser'}
         {@const fav = $favicons[faviconOrigin(tab.url ?? '')]}
         {#if fav}
@@ -189,6 +262,7 @@
   }
 
   .tab {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 5px;
@@ -199,6 +273,23 @@
     white-space: nowrap;
     color: var(--text-color-secondary);
   }
+
+  .tab.dragging { opacity: 0.45; }
+
+  .tab.drop-before::before,
+  .tab.drop-after::after {
+    content: '';
+    position: absolute;
+    z-index: 2;
+    top: 2px;
+    bottom: 2px;
+    width: 2px;
+    border-radius: 1px;
+    background: var(--accent-color);
+  }
+
+  .tab.drop-before::before { left: -1px; }
+  .tab.drop-after::after { right: -1px; }
 
   .tab:hover {
     background: var(--hover-bg);

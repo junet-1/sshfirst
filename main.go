@@ -31,6 +31,15 @@ var singleInstanceKey = [32]byte{
 	0x2d, 0x69, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63,
 }
 
+func shouldStartHidden(args []string) bool {
+	for _, arg := range args {
+		if arg == "--start-in-tray" || arg == "--hidden" {
+			return true
+		}
+	}
+	return false
+}
+
 func main() {
 	// Wayland forbids a client from setting its own toplevel position, so the
 	// window-geometry restore below would be a no-op there and the compositor
@@ -90,6 +99,7 @@ func main() {
 	mainOptions := application.WebviewWindowOptions{
 		Name:             "main",
 		Title:            "SSH First",
+		Hidden:           shouldStartHidden(os.Args[1:]),
 		Width:            1280,
 		Height:           800,
 		MinWidth:         960,

@@ -1,7 +1,7 @@
 # Maintainer: Julian <juwolf11@googlemail.com>
 pkgname=ssh-first
-pkgver=0.2.1a
-pkgrel=1
+pkgver=0.2.2
+pkgrel=3
 pkgdesc="A focused SSH and SFTP workspace"
 arch=('x86_64')
 url="https://github.com/junet-1"
@@ -37,10 +37,13 @@ package() {
 
   # Application-menu entry + icons (pixmaps is the guaranteed fallback for the
   # Icon=ssh-first name; hicolor carries the full-res icon for HiDPI themes).
-  install -Dm644 packaging/ssh-first.desktop "$pkgdir/usr/share/applications/ssh-first.desktop"
+  # Wails exposes org.wails.ssh_first as its GTK application ID. Matching the
+  # desktop filename to it lets KDE/GNOME resolve the correct taskbar icon;
+  # StartupWMClass in the file additionally covers the XWayland window class.
+  install -Dm644 packaging/ssh-first.desktop "$pkgdir/usr/share/applications/org.wails.ssh_first.desktop"
   install -Dm644 build/appicon.png "$pkgdir/usr/share/pixmaps/ssh-first.png"
   install -Dm644 build/appicon.png "$pkgdir/usr/share/icons/hicolor/1024x1024/apps/ssh-first.png"
 
-  # Start automatically on login for every user, straight from install.
+  # Start in the tray on login without opening the main window.
   install -Dm644 packaging/ssh-first-autostart.desktop "$pkgdir/etc/xdg/autostart/ssh-first.desktop"
 }

@@ -27,3 +27,24 @@ func TestTrayProtocolIconsAreDistinctPNGs(t *testing.T) {
 		}
 	}
 }
+
+func TestTrayHostsExcludesWebResources(t *testing.T) {
+	hosts := []storage.Host{
+		{ID: 1, Label: "Grafana", Protocol: storage.HostProtocolWeb, Favorite: true},
+		{ID: 2, Label: "Shell", Protocol: storage.HostProtocolSSH},
+		{ID: 3, Label: "Files", Protocol: storage.HostProtocolSFTP},
+	}
+
+	got := trayHosts(hosts)
+	if len(got) != 2 {
+		t.Fatalf("trayHosts returned %d hosts, want 2", len(got))
+	}
+	for _, host := range got {
+		if host.Protocol == storage.HostProtocolWeb {
+			t.Fatalf("trayHosts included web resource %q", host.Label)
+		}
+	}
+	if len(hosts) != 3 {
+		t.Fatal("trayHosts mutated its input")
+	}
+}

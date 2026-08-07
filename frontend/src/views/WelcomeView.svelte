@@ -78,7 +78,7 @@
     if (!trimmed || connecting) return
     connecting = true
     try {
-      const connected = await connectQuickTarget(trimmed)
+      const connected = await connectQuickTarget(trimmed, quickTabId ?? undefined)
       if (connected) {
         target = ''
         if (quickTabId) closeQuickConnectTab(quickTabId)

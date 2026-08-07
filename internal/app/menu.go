@@ -13,6 +13,7 @@ func (a *App) BuildMenu() *application.Menu {
 	file := m.AddSubmenu("File")
 	file.Add("New Host…").OnClick(a.menuAction("file.newHost"))
 	file.Add("Import ~/.ssh/config").OnClick(a.menuAction("file.importConfig"))
+	file.Add("Workspaces…").OnClick(a.menuAction("file.workspaces"))
 	file.AddSeparator()
 	file.Add("Settings…").OnClick(a.menuAction("file.settings"))
 	file.AddSeparator()

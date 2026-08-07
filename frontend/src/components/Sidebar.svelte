@@ -264,7 +264,7 @@
         break
       }
       case 'panel':
-        openControlPanelTab(host.label, host.controlPanelUrl)
+        openControlPanelTab(host.label, host.controlPanelUrl, host.id)
         break
       case 'forward':
         forwardingDialogHostId.set(host.id)
@@ -513,7 +513,7 @@
         role="group"
         aria-label={$t('sidebar.folders')}
         class:drag-over={dragOverFolderId === 'root'}
-        on:dragover|preventDefault={() => (dragOverFolderId = 'root')}
+        on:dragover|preventDefault={(event) => onDragOver('root', event)}
         on:dragleave={() => (dragOverFolderId = null)}
         on:drop|preventDefault={(e) => onDrop('root', e)}
       >
@@ -538,7 +538,7 @@
             on:click={() => toggleFolder(folder.id)}
             on:contextmenu|preventDefault|stopPropagation={(e) => openFolderContextMenu(folder, e)}
             on:dragstart|stopPropagation={(e) => onFolderDragStart(folder, e)}
-            on:dragover|preventDefault={() => (dragOverFolderId = folder.id)}
+            on:dragover|preventDefault={(event) => onDragOver(folder.id, event)}
             on:dragleave={() => (dragOverFolderId = null)}
             on:drop|preventDefault={(e) => onDrop(folder.id, e)}
           >
@@ -577,7 +577,7 @@
         <div
           class="root-hosts"
           class:drag-over={dragOverFolderId === 'root'}
-          on:dragover|preventDefault={() => (dragOverFolderId = 'root')}
+          on:dragover|preventDefault={(event) => onDragOver('root', event)}
           on:dragleave={() => (dragOverFolderId = null)}
           on:drop|preventDefault={(e) => onDrop('root', e)}
         >

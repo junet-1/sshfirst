@@ -1,5 +1,5 @@
 export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'error'
-export type TabKind = 'terminal' | 'sftp' | 'quick-connect' | 'browser'
+export type TabKind = 'terminal' | 'sftp' | 'quick-connect' | 'browser' | 'connection-attempt'
 
 export interface ConnectionInfo {
   connectionId: string

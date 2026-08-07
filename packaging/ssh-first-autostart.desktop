@@ -2,8 +2,9 @@
 Type=Application
 Name=SSH First
 Comment=Start SSH First on login
-Exec=ssh-first
+Exec=ssh-first --start-in-tray
 Icon=ssh-first
 Terminal=false
 StartupWMClass=ssh-first
 X-GNOME-Autostart-enabled=true
+X-KDE-autostart-after=panel

@@ -9,6 +9,7 @@
   import { hostDialog, inspectorVisible, selectedHostId, sidebarVisible } from '../stores/ui'
   import { hosts, importSSHConfigWithFeedback } from '../stores/hosts'
   import { forwardingDialogHostId } from '../stores/forwarding'
+  import { activeWorkspaceName, workspaceDialogOpen } from '../stores/workspaces'
 
   $: activeConnection = $activeConnectionId ? $connections[$activeConnectionId] : null
   $: activeHost = activeConnection ? $hosts.find((h) => h.id === activeConnection?.hostId) ?? null : null
@@ -110,6 +111,17 @@
     on:click={onTileToggle}
   >
     <Icon name="grid" />
+  </button>
+
+  <div class="sep" />
+
+  <button
+    class="tool"
+    class:active={$activeWorkspaceName !== null}
+    title={$activeWorkspaceName ? $t('workspaces.activeTitle', { name: $activeWorkspaceName }) : $t('workspaces.title')}
+    on:click={() => workspaceDialogOpen.set(true)}
+  >
+    <Icon name="layers" />
   </button>
 
   <div class="sep" />

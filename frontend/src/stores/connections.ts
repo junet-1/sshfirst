@@ -3,8 +3,9 @@ import { backend, on } from '../services/backend'
 import { confirmDialog } from './confirm'
 import { notify } from './notifications'
 import { t } from '../services/i18n'
-import type { ConnectionStatus, StatusEvent, TabKind } from '../types/connection'
+import type { ConnectionInfo, ConnectionStatus, StatusEvent, TabKind } from '../types/connection'
 import type { Host } from '../types/host'
+import { reorderTabIds, type TabDropPosition } from '../lib/tabOrder'
 
 export interface TabViewModel {
   tabId: string
@@ -16,6 +17,8 @@ export interface TabViewModel {
   kind: TabKind
   /** Only set for kind === 'browser': the control-panel URL shown in the iframe. */
   url?: string
+  /** Persisted web host backing this browser tab, when it came from the host catalog. */
+  resourceHostId?: number
 }
 
 export interface ConnectionViewModel {
@@ -56,6 +59,23 @@ export const activeTabId = writable<string | null>(null)
 export const terminalSizes = writable<Record<string, { cols: number; rows: number }>>({})
 export const recentConnections = writable<RecentConnection[]>([])
 export const closedTabs = writable<ClosedTab[]>([])
+
+export type ConnectionAttemptReason = 'unreachable' | 'authentication' | 'failed'
+export type ConnectionAttemptSpec =
+  | { kind: 'host'; hostId: number; hostLabel: string; nodeType?: 'terminal' | 'sftp' }
+  | { kind: 'quick'; target: string; hostLabel: string }
+
+export interface ConnectionAttemptState {
+  tabId: string
+  spec: ConnectionAttemptSpec
+  phase: 'connecting' | 'failed'
+  startedAt: number
+  error?: string
+  reason?: ConnectionAttemptReason
+}
+
+export const connectionAttempts = writable<Record<string, ConnectionAttemptState>>({})
+const activeAttemptRuns = new Map<string, symbol>()
 
 // Visiting a tab acknowledges both ordinary background output and a terminal
 // bell. A store subscription covers mouse clicks, keyboard cycling and tabs
@@ -104,55 +124,151 @@ function rememberRecent(entry: Omit<RecentConnection, 'usedAt'>): void {
   })
 }
 
-export async function connectToHost(hostId: number, hostLabel: string): Promise<string> {
-  connectingHostIds.update((set) => new Set(set).add(hostId))
+function nextFrontendTabId(prefix: string): string {
+  const randomPart = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`
+  return `${prefix}-${randomPart}`
+}
+
+function connectionFailureReason(error: unknown): ConnectionAttemptReason {
+  const message = error instanceof Error ? error.message : String(error)
+  if (/permission denied|authentication|unable to authenticate|no supported methods|credentials?/i.test(message)) {
+    return 'authentication'
+  }
+  if (/network is unreachable|no route|connection refused|timed?\s*out|timeout|no such host|name or service not known|lookup .*:|i\/o timeout|host is down/i.test(message)) {
+    return 'unreachable'
+  }
+  return 'failed'
+}
+
+function attemptLabel(spec: ConnectionAttemptSpec): string {
+  return spec.kind === 'host' ? spec.hostLabel : spec.hostLabel || spec.target
+}
+
+function createConnectionAttempt(spec: ConnectionAttemptSpec, reuseTabId?: string): string {
+  const existing = reuseTabId ? get(tabs)[reuseTabId] : undefined
+  const tabId = existing && reuseTabId ? reuseTabId : nextFrontendTabId('connection-attempt')
+  const tab: TabViewModel = {
+    tabId,
+    connectionId: '',
+    title: attemptLabel(spec),
+    closed: false,
+    unread: false,
+    bell: false,
+    kind: 'connection-attempt'
+  }
+  tabs.update((all) => ({ ...all, [tabId]: tab }))
+  connectionAttempts.update((all) => ({
+    ...all,
+    [tabId]: { tabId, spec, phase: 'connecting', startedAt: Date.now() }
+  }))
+  activeConnectionId.set(null)
+  activeTabId.set(tabId)
+  return tabId
+}
+
+function updateConnectionAttempt(tabId: string, patch: Partial<ConnectionAttemptState>): void {
+  connectionAttempts.update((all) => {
+    const current = all[tabId]
+    return current ? { ...all, [tabId]: { ...current, ...patch } } : all
+  })
+}
+
+function completeConnectionAttempt(tabId: string, info: ConnectionInfo, spec: ConnectionAttemptSpec): string {
+  const hostLabel = info.hostLabel || attemptLabel(spec)
+  connections.update((all) => ({
+    ...all,
+    [info.connectionId]: {
+      connectionId: info.connectionId,
+      hostId: info.hostId,
+      hostLabel,
+      ...(spec.kind === 'quick' ? { quickTarget: spec.target } : {}),
+      status: info.status,
+      serverVersion: info.serverVersion,
+      authMethod: info.authMethod,
+      protocol: info.protocol,
+      connectedAt: info.status === 'connected' ? Date.now() : undefined,
+      error: info.error,
+      tabOrder: [info.initialTabId]
+    }
+  }))
+  const nextTab: TabViewModel = {
+    tabId: info.initialTabId,
+    connectionId: info.connectionId,
+    title: info.initialTabKind === 'sftp' ? hostLabel : nextTerminalTitle(info.connectionId, hostLabel),
+    closed: false,
+    unread: false,
+    bell: false,
+    kind: info.initialTabKind
+  }
+  tabs.update((all) => {
+    const entries = Object.entries(all).flatMap(([id, tab]) => id === tabId ? [[info.initialTabId, nextTab] as const] : [[id, tab] as const])
+    return Object.fromEntries(entries)
+  })
+  connectionAttempts.update((all) => {
+    const { [tabId]: _removed, ...rest } = all
+    return rest
+  })
+  activeConnectionId.set(info.connectionId)
+  activeTabId.set(info.initialTabId)
+  if (info.warning) notify('info', info.warning)
+  if (spec.kind === 'host') rememberRecent({ kind: 'host', hostId: spec.hostId, label: spec.hostLabel })
+  else rememberRecent({ kind: 'quick', target: spec.target, label: hostLabel })
+  return info.connectionId
+}
+
+async function runHostConnectionAttempt(spec: Extract<ConnectionAttemptSpec, { kind: 'host' }>, tabId: string): Promise<string> {
+  const run = Symbol(tabId)
+  activeAttemptRuns.set(tabId, run)
+  updateConnectionAttempt(tabId, { phase: 'connecting', startedAt: Date.now(), error: undefined, reason: undefined })
+  connectingHostIds.update((set) => new Set(set).add(spec.hostId))
   try {
-    const info = await backend.connect(hostId, 80, 24)
-    connections.update((all) => ({
-      ...all,
-      [info.connectionId]: {
-        connectionId: info.connectionId,
-        hostId,
-        hostLabel,
-        status: info.status,
-        serverVersion: info.serverVersion,
-        authMethod: info.authMethod,
-        protocol: info.protocol,
-        connectedAt: info.status === 'connected' ? Date.now() : undefined,
-        error: info.error,
-        tabOrder: [info.initialTabId]
-      }
-    }))
-    tabs.update((all) => ({
-      ...all,
-      [info.initialTabId]: {
-        tabId: info.initialTabId,
-        connectionId: info.connectionId,
-        title: info.initialTabKind === 'sftp' ? hostLabel : nextTerminalTitle(info.connectionId, hostLabel),
-        closed: false,
-        unread: false,
-        bell: false,
-        kind: info.initialTabKind
-      }
-    }))
-    activeConnectionId.set(info.connectionId)
-    activeTabId.set(info.initialTabId)
-    if (info.warning) notify('info', info.warning)
-    rememberRecent({ kind: 'host', hostId, label: hostLabel })
-    return info.connectionId
+    const info = spec.nodeType
+      ? await backend.connectWorkspaceResource(spec.hostId, spec.nodeType, 80, 24)
+      : await backend.connect(spec.hostId, 80, 24)
+    if (activeAttemptRuns.get(tabId) !== run || !get(tabs)[tabId]) {
+      await backend.disconnect(info.connectionId).catch(() => {})
+      return ''
+    }
+    activeAttemptRuns.delete(tabId)
+    return completeConnectionAttempt(tabId, info, spec)
+  } catch (error) {
+    if (activeAttemptRuns.get(tabId) === run && get(tabs)[tabId]) {
+      activeAttemptRuns.delete(tabId)
+      updateConnectionAttempt(tabId, {
+        phase: 'failed',
+        error: error instanceof Error ? error.message : String(error),
+        reason: connectionFailureReason(error)
+      })
+    }
+    throw error
   } finally {
     connectingHostIds.update((set) => {
       const next = new Set(set)
-      next.delete(hostId)
+      next.delete(spec.hostId)
       return next
     })
   }
 }
 
+export function connectToHost(hostId: number, hostLabel: string): Promise<string> {
+  const spec = { kind: 'host', hostId, hostLabel } as const
+  return runHostConnectionAttempt(spec, createConnectionAttempt(spec))
+}
+
+/** Connects a shared SSH resource in the mode selected by a workspace leaf. */
+export function connectWorkspaceResource(
+  hostId: number,
+  hostLabel: string,
+  nodeType: 'terminal' | 'sftp'
+): Promise<string> {
+  const spec = { kind: 'host', hostId, hostLabel, nodeType } as const
+  return runHostConnectionAttempt(spec, createConnectionAttempt(spec))
+}
+
 /** Opens a one-off SSH target without creating a sidebar host. */
-export async function connectQuickTarget(target: string): Promise<string | null> {
+export async function connectQuickTarget(target: string, reuseTabId?: string): Promise<string | null> {
   const normalized = target.trim()
-  if (!normalized || connectingQuickTargets.has(normalized)) return null
+  if (!normalized) return null
 
   const existing = Object.values(get(connections)).find(
     (connection) => connection.quickTarget === normalized && connection.status === 'connected'
@@ -164,45 +280,39 @@ export async function connectQuickTarget(target: string): Promise<string | null>
     return existing.connectionId
   }
 
+  const existingAttempt = Object.values(get(connectionAttempts)).find(
+    (attempt) => attempt.spec.kind === 'quick' && attempt.spec.target === normalized
+  )
+  if (existingAttempt) {
+    activeConnectionId.set(null)
+    activeTabId.set(existingAttempt.tabId)
+    if (existingAttempt.phase === 'failed') void retryConnectionAttempt(existingAttempt.tabId)
+    return null
+  }
+  if (connectingQuickTargets.has(normalized)) return null
+
+  const spec = { kind: 'quick', target: normalized, hostLabel: normalized } as const
+  const tabId = createConnectionAttempt(spec, reuseTabId)
+  const run = Symbol(tabId)
+  activeAttemptRuns.set(tabId, run)
   connectingQuickTargets.add(normalized)
   try {
     const info = await backend.quickConnect(normalized, 80, 24)
-    const hostLabel = info.hostLabel || normalized
-    connections.update((all) => ({
-      ...all,
-      [info.connectionId]: {
-        connectionId: info.connectionId,
-        hostId: info.hostId,
-        hostLabel,
-        quickTarget: normalized,
-        status: info.status,
-        serverVersion: info.serverVersion,
-        authMethod: info.authMethod,
-        protocol: info.protocol,
-        connectedAt: info.status === 'connected' ? Date.now() : undefined,
-        error: info.error,
-        tabOrder: [info.initialTabId]
-      }
-    }))
-    tabs.update((all) => ({
-      ...all,
-      [info.initialTabId]: {
-        tabId: info.initialTabId,
-        connectionId: info.connectionId,
-        title: nextTerminalTitle(info.connectionId, hostLabel),
-        closed: false,
-        unread: false,
-        bell: false,
-        kind: 'terminal'
-      }
-    }))
-    activeConnectionId.set(info.connectionId)
-    activeTabId.set(info.initialTabId)
-    if (info.warning) notify('info', info.warning)
-    rememberRecent({ kind: 'quick', target: normalized, label: hostLabel })
-    return info.connectionId
+    if (activeAttemptRuns.get(tabId) !== run || !get(tabs)[tabId]) {
+      await backend.disconnect(info.connectionId).catch(() => {})
+      return null
+    }
+    activeAttemptRuns.delete(tabId)
+    return completeConnectionAttempt(tabId, info, spec)
   } catch (error) {
-    notify('error', `Could not connect to ${normalized}: ${error instanceof Error ? error.message : String(error)}`)
+    if (activeAttemptRuns.get(tabId) === run && get(tabs)[tabId]) {
+      activeAttemptRuns.delete(tabId)
+      updateConnectionAttempt(tabId, {
+        phase: 'failed',
+        error: error instanceof Error ? error.message : String(error),
+        reason: connectionFailureReason(error)
+      })
+    }
     return null
   } finally {
     connectingQuickTargets.delete(normalized)
@@ -211,9 +321,18 @@ export async function connectQuickTarget(target: string): Promise<string | null>
 
 /** Connects to hostId, or if a live connection already exists, focuses it
  * (opening a fresh tab if all its tabs were closed). A stale/dead record is
- * discarded so the host can always be reopened. Failures surface as an error
- * banner; this never rejects, so callers can fire-and-forget. */
+ * discarded so the host can always be reopened. Failed first attempts remain
+ * visible as retryable in-frame tabs; this never rejects to UI callers. */
 export async function connectOrFocusHost(hostId: number, hostLabel: string, openFreshSession = false): Promise<void> {
+  const attempt = Object.values(get(connectionAttempts)).find(
+    (candidate) => candidate.spec.kind === 'host' && candidate.spec.hostId === hostId
+  )
+  if (attempt) {
+    activeConnectionId.set(null)
+    activeTabId.set(attempt.tabId)
+    if (attempt.phase === 'failed') void retryConnectionAttempt(attempt.tabId)
+    return
+  }
   // A connect call only enters the connection store after the backend has
   // completed its handshake. Guard that gap so repeated clicks/Enter presses
   // cannot create hidden duplicate connections for the same host.
@@ -245,10 +364,40 @@ export async function connectOrFocusHost(hostId: number, hostLabel: string, open
       return rest
     })
   }
+  await connectToHost(hostId, hostLabel).catch(() => {})
+}
+
+export async function retryConnectionAttempt(tabId: string): Promise<void> {
+  const attempt = get(connectionAttempts)[tabId]
+  if (!attempt || attempt.phase === 'connecting') return
+  if (attempt.spec.kind === 'host') {
+    await runHostConnectionAttempt(attempt.spec, tabId).catch(() => {})
+    return
+  }
+  const spec = attempt.spec
+  const run = Symbol(tabId)
+  activeAttemptRuns.set(tabId, run)
+  updateConnectionAttempt(tabId, { phase: 'connecting', startedAt: Date.now(), error: undefined, reason: undefined })
+  connectingQuickTargets.add(spec.target)
   try {
-    await connectToHost(hostId, hostLabel)
-  } catch (e) {
-    notify('error', `Could not connect to ${hostLabel}: ${e instanceof Error ? e.message : String(e)}`)
+    const info = await backend.quickConnect(spec.target, 80, 24)
+    if (activeAttemptRuns.get(tabId) !== run || !get(tabs)[tabId]) {
+      await backend.disconnect(info.connectionId).catch(() => {})
+      return
+    }
+    activeAttemptRuns.delete(tabId)
+    completeConnectionAttempt(tabId, info, spec)
+  } catch (error) {
+    if (activeAttemptRuns.get(tabId) === run && get(tabs)[tabId]) {
+      activeAttemptRuns.delete(tabId)
+      updateConnectionAttempt(tabId, {
+        phase: 'failed',
+        error: error instanceof Error ? error.message : String(error),
+        reason: connectionFailureReason(error)
+      })
+    }
+  } finally {
+    connectingQuickTargets.delete(spec.target)
   }
 }
 
@@ -327,7 +476,7 @@ export function normalizePanelUrl(raw: string): string {
  * "connect" affordance funnels through so the three protocols stay symmetric. */
 export function openHost(host: Host, openFreshSession = false): void {
   if (host.protocol === 'web') {
-    openControlPanelTab(host.label, host.controlPanelUrl)
+    openControlPanelTab(host.label, host.controlPanelUrl, host.id)
     return
   }
   void connectOrFocusHost(host.id, host.label, openFreshSession)
@@ -335,15 +484,18 @@ export function openHost(host: Host, openFreshSession = false): void {
 
 /** Opens a host's web control panel as an embedded browser tab, or focuses the
  * existing tab if that URL is already open. No SSH connection is involved. */
-export function openControlPanelTab(hostLabel: string, rawUrl: string): void {
+export function openControlPanelTab(hostLabel: string, rawUrl: string, resourceHostId?: number): string {
   const url = normalizePanelUrl(rawUrl)
-  if (!url) return
+  if (!url) return ''
 
   const existing = Object.values(get(tabs)).find((tab) => tab.kind === 'browser' && tab.url === url)
   if (existing) {
+    if (resourceHostId && existing.resourceHostId !== resourceHostId) {
+      tabs.update((all) => ({ ...all, [existing.tabId]: { ...existing, resourceHostId } }))
+    }
     activeConnectionId.set(null)
     activeTabId.set(existing.tabId)
-    return
+    return existing.tabId
   }
 
   const randomPart = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`
@@ -358,11 +510,33 @@ export function openControlPanelTab(hostLabel: string, rawUrl: string): void {
       unread: false,
       bell: false,
       kind: 'browser',
-      url
+      url,
+      resourceHostId
     }
   }))
   activeConnectionId.set(null)
   activeTabId.set(tabId)
+  return tabId
+}
+
+/** Clears the current runtime without confirmation before a workspace restore. */
+export async function resetWorkspaceEnvironment(): Promise<string[]> {
+  const connectionIDs = Object.keys(get(connections))
+  const results = await Promise.allSettled(connectionIDs.map((connectionID) => backend.disconnect(connectionID)))
+  const warnings = results.flatMap((result, index) =>
+    result.status === 'rejected'
+      ? [`Could not cleanly close connection ${connectionIDs[index] ?? ''}: ${String(result.reason)}`]
+      : []
+  )
+  connections.set({})
+  tabs.set({})
+  activeAttemptRuns.clear()
+  connectionAttempts.set({})
+  activeConnectionId.set(null)
+  activeTabId.set(null)
+  terminalSizes.set({})
+  closedTabs.set([])
+  return warnings
 }
 
 export async function duplicateTab(tabId: string): Promise<void> {
@@ -378,6 +552,32 @@ export function renameTab(tabId: string, title: string): void {
     if (!existing) return all
     return { ...all, [tabId]: { ...existing, title } }
   })
+}
+
+/** Reorders the global tab strip and each affected connection's tab order. */
+export function moveTab(tabId: string, targetTabId: string, position: TabDropPosition): void {
+  const current = get(tabs)
+  const orderedIDs = Object.keys(current)
+  const nextIDs = reorderTabIds(orderedIDs, tabId, targetTabId, position)
+  if (nextIDs.every((id, index) => id === orderedIDs[index])) return
+
+  tabs.set(Object.fromEntries(nextIDs.flatMap((id) => current[id] ? [[id, current[id]]] : [])))
+  connections.update((all) => {
+    const next = { ...all }
+    for (const [connectionID, connection] of Object.entries(all)) {
+      const reordered = nextIDs.filter((id) => current[id]?.connectionId === connectionID)
+      if (reordered.length === connection.tabOrder.length) next[connectionID] = { ...connection, tabOrder: reordered }
+    }
+    return next
+  })
+}
+
+export function moveTabBy(tabId: string, delta: -1 | 1): void {
+  const ids = Object.keys(get(tabs))
+  const index = ids.indexOf(tabId)
+  const target = ids[index + delta]
+  if (!target) return
+  moveTab(tabId, target, delta < 0 ? 'before' : 'after')
 }
 
 export function markTabActivity(tabId: string, bell = false): void {
@@ -400,6 +600,15 @@ export function clearTabAttention(tabId: string): void {
 export async function closeTab(tabId: string): Promise<void> {
   const tab = get(tabs)[tabId]
   if (!tab) return
+  if (tab.kind === 'connection-attempt') {
+    activeAttemptRuns.delete(tabId)
+    connectionAttempts.update((all) => {
+      const { [tabId]: _removed, ...rest } = all
+      return rest
+    })
+    removeTabLocally(tabId)
+    return
+  }
   // Quick-connect and browser tabs are purely frontend: no PTY/backend tab to close.
   if (tab.kind === 'quick-connect' || tab.kind === 'browser') {
     removeTabLocally(tabId)
@@ -463,8 +672,8 @@ export async function reopenLastClosedTab(): Promise<void> {
     try {
       await connectToHost(closed.hostId, closed.hostLabel)
       restoredTabId = get(activeTabId)
-    } catch (error) {
-      notify('error', `Could not restore ${closed.hostLabel}: ${error instanceof Error ? error.message : String(error)}`)
+    } catch {
+      // The failed connection attempt stays visible in its own tab.
     }
   }
 
@@ -492,7 +701,11 @@ function removeTabLocally(tabId: string): void {
     const sameConnection = tab ? remainingTabs.filter((candidate) => candidate.connectionId === tab.connectionId) : []
     const next = sameConnection[sameConnection.length - 1] ?? remainingTabs[remainingTabs.length - 1]
     activeTabId.set(next?.tabId ?? null)
-    activeConnectionId.set(next && next.kind !== 'quick-connect' && next.kind !== 'browser' ? next.connectionId : null)
+    activeConnectionId.set(
+      next && next.kind !== 'quick-connect' && next.kind !== 'browser' && next.kind !== 'connection-attempt'
+        ? next.connectionId
+        : null
+    )
   }
 }
 

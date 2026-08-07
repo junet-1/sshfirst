@@ -53,12 +53,22 @@ export const backend = {
   getSetting: (key: string): Promise<SettingResult> => Backend.GetSetting(key) as unknown as Promise<SettingResult>,
   setSetting: (key: string, value: string): Promise<void> => Backend.SetSetting(key, value),
 
+  listWorkspaces: (): Promise<string[]> => Backend.ListWorkspaces(),
+  loadWorkspace: (name: string): Promise<string> => Backend.LoadWorkspace(name),
+  saveWorkspace: (name: string, json: string): Promise<void> => Backend.SaveWorkspace(name, json),
+  deleteWorkspace: (name: string): Promise<void> => Backend.DeleteWorkspace(name),
+  importWorkspaceJSON: (): Promise<string> => Backend.ImportWorkspaceJSON(),
+  exportWorkspaceJSON: (defaultFilename: string, json: string): Promise<string> =>
+    Backend.ExportWorkspaceJSON(defaultFilename, json),
+
   openToolWindow: (kind: string, entityId = -1, parentId = -1): Promise<void> =>
     Backend.OpenToolWindow(kind, entityId, parentId),
   connectedConnectionId: (hostId: number): Promise<string> => Backend.ConnectedConnectionID(hostId),
 
   connect: (hostId: number, cols: number, rows: number): Promise<ConnectionInfo> =>
     Backend.Connect(hostId, cols, rows) as unknown as Promise<ConnectionInfo>,
+  connectWorkspaceResource: (hostId: number, nodeType: 'terminal' | 'sftp', cols: number, rows: number): Promise<ConnectionInfo> =>
+    Backend.ConnectWorkspaceResource(hostId, nodeType, cols, rows) as unknown as Promise<ConnectionInfo>,
   quickConnect: (target: string, cols: number, rows: number): Promise<ConnectionInfo> =>
     Backend.QuickConnect(target, cols, rows) as unknown as Promise<ConnectionInfo>,
   reconnect: (connectionId: string): Promise<ConnectionInfo> =>

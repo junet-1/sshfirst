@@ -2,6 +2,7 @@
   import TerminalPane from './TerminalPane.svelte'
   import SftpPane from './SftpPane.svelte'
   import BrowserPane from './BrowserPane.svelte'
+  import ConnectionAttemptPane from './ConnectionAttemptPane.svelte'
   import WelcomeView from '../views/WelcomeView.svelte'
   import SplitDividers from './SplitDividers.svelte'
   import { activeTabId, tabs } from '../stores/connections'
@@ -19,7 +20,17 @@
       {@const focused = $activeTabId === tab.tabId}
       {@const visible = $isSplit ? $visibleTabIds.has(tab.tabId) : focused}
       {#if tab.kind === 'sftp'}
-        <SftpPane tabId={tab.tabId} active={visible} />
+        <SftpPane
+          tabId={tab.tabId}
+          {visible}
+          rect={$isSplit ? rects.get(tab.tabId) ?? null : null}
+        />
+      {:else if tab.kind === 'connection-attempt'}
+        <ConnectionAttemptPane
+          tabId={tab.tabId}
+          {visible}
+          rect={$isSplit ? rects.get(tab.tabId) ?? null : null}
+        />
       {:else if tab.kind === 'browser'}
         <BrowserPane
           tabId={tab.tabId}

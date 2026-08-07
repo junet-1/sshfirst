@@ -33,6 +33,7 @@
   import { canSplit, closeSplit, isSplit, splitFocused, tileAllTerminals } from '../stores/layout'
   import { reconnectConnection } from '../stores/reconnect'
   import { broadcastActive, setBroadcast } from '../stores/broadcast'
+  import { workspaceDialogOpen } from '../stores/workspaces'
 
   type Group = 'quick' | 'tabs' | 'hosts' | 'commands' | 'snippets'
 
@@ -80,7 +81,9 @@
     const tab = get(tabs)[tabId]
     if (!tab) return
     activeTabId.set(tabId)
-    activeConnectionId.set(tab.kind === 'quick-connect' || tab.kind === 'browser' ? null : tab.connectionId)
+    activeConnectionId.set(
+      tab.kind === 'quick-connect' || tab.kind === 'browser' || tab.kind === 'connection-attempt' ? null : tab.connectionId
+    )
   }
 
   async function copyActiveConnectionCommand(): Promise<void> {
@@ -133,6 +136,15 @@
       keywords: 'preferences theme language font',
       shortcut: 'Ctrl ,',
       run: () => settingsOpen.set(true)
+    },
+    {
+      id: 'cmd.workspaces',
+      group: 'commands',
+      icon: 'layers',
+      label: $t('workspaces.title'),
+      hint: $t('workspaces.saveHint'),
+      keywords: 'workspace layout save restore import export',
+      run: () => workspaceDialogOpen.set(true)
     },
     {
       id: 'cmd.toggleSidebar',
@@ -367,7 +379,7 @@
         label: `${$t('sidebar.context.controlPanel')} — ${host.label}`,
         hint: host.controlPanelUrl,
         keywords: `control panel web browser dashboard ${host.label}`,
-        run: () => openControlPanelTab(host.label, host.controlPanelUrl)
+        run: () => { openControlPanelTab(host.label, host.controlPanelUrl, host.id) }
       })
     )
 

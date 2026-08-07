@@ -71,6 +71,17 @@ export function Connect(hostID: number, cols: number, rows: number): $Cancellabl
 }
 
 /**
+ * ConnectWorkspaceResource opens a persisted SSH target in the mode declared
+ * by a workspace leaf. The host remains the shared resource; terminal vs SFTP
+ * is a layout concern and does not mutate the saved host's default protocol.
+ */
+export function ConnectWorkspaceResource(hostID: number, nodeType: string, cols: number, rows: number): $CancellablePromise<$models.ConnectionInfo> {
+    return $Call.ByID(3210444060, hostID, nodeType, cols, rows).then(($result: any) => {
+        return $$createType0($result);
+    });
+}
+
+/**
  * ConnectedConnectionID returns one live connection for a persisted host.
  * Tool windows use this to offer connection-bound actions without having to
  * duplicate the main window's frontend connection store.
@@ -163,6 +174,10 @@ export function DeleteSnippet(id: number): $CancellablePromise<void> {
     return $Call.ByID(334347617, id);
 }
 
+export function DeleteWorkspace(name: string): $CancellablePromise<void> {
+    return $Call.ByID(646216681, name);
+}
+
 /**
  * Disconnect closes an SSH connection and every terminal tab on it.
  */
@@ -176,6 +191,10 @@ export function DownloadSFTP(tabID: string, remotePath: string, localDir: string
 
 export function ExportTerminalOutput(defaultFilename: string, content: string): $CancellablePromise<string> {
     return $Call.ByID(2937854016, defaultFilename, content);
+}
+
+export function ExportWorkspaceJSON(defaultFilename: string, contents: string): $CancellablePromise<string> {
+    return $Call.ByID(1010339432, defaultFilename, contents);
 }
 
 /**
@@ -234,6 +253,10 @@ export function ImportSSHConfig(): $CancellablePromise<$models.ImportResult> {
     return $Call.ByID(1364424794).then(($result: any) => {
         return $$createType7($result);
     });
+}
+
+export function ImportWorkspaceJSON(): $CancellablePromise<string> {
+    return $Call.ByID(2514530093);
 }
 
 export function IsFullscreen(): $CancellablePromise<boolean> {
@@ -306,6 +329,16 @@ export function ListSnippets(hostID: number): $CancellablePromise<storage$0.Snip
     });
 }
 
+export function ListWorkspaces(): $CancellablePromise<string[]> {
+    return $Call.ByID(1353269229).then(($result: any) => {
+        return $$createType16($result);
+    });
+}
+
+export function LoadWorkspace(name: string): $CancellablePromise<string> {
+    return $Call.ByID(764363996, name);
+}
+
 /**
  * LogFrontendError lets the frontend report otherwise-invisible JS errors
  * (window.onerror / unhandledrejection, see frontend/src/main.ts) into the
@@ -336,7 +369,7 @@ export function MoveHostToFolder(hostID: number, folderID: number | null): $Canc
  */
 export function NewTerminalTab(connectionID: string, cols: number, rows: number): $CancellablePromise<$models.TabInfo> {
     return $Call.ByID(1210917242, connectionID, cols, rows).then(($result: any) => {
-        return $$createType16($result);
+        return $$createType17($result);
     });
 }
 
@@ -358,7 +391,7 @@ export function PickFile(): $CancellablePromise<string> {
 
 export function PickIdentityFiles(): $CancellablePromise<string[]> {
     return $Call.ByID(1118325447).then(($result: any) => {
-        return $$createType17($result);
+        return $$createType16($result);
     });
 }
 
@@ -433,6 +466,10 @@ export function RespondPassphrase(requestID: string, passphrase: string, remembe
  */
 export function RespondPassword(requestID: string, password: string, remember: boolean): $CancellablePromise<void> {
     return $Call.ByID(4249515477, requestID, password, remember);
+}
+
+export function SaveWorkspace(name: string, contents: string): $CancellablePromise<void> {
+    return $Call.ByID(2996770283, name, contents);
 }
 
 /**
@@ -566,6 +603,6 @@ const $$createType12 = $Create.Array($$createType3);
 const $$createType13 = $Create.Array($$createType4);
 const $$createType14 = $models.SFTPDirectory.createFrom;
 const $$createType15 = $Create.Array($$createType5);
-const $$createType16 = $models.TabInfo.createFrom;
-const $$createType17 = $Create.Array($Create.Any);
+const $$createType16 = $Create.Array($Create.Any);
+const $$createType17 = $models.TabInfo.createFrom;
 const $$createType18 = sftp$0.Entry.createFrom;

@@ -16,6 +16,7 @@
   import HostKeyPromptDialog from './components/dialogs/HostKeyPromptDialog.svelte'
   import KeyboardInteractivePromptDialog from './components/dialogs/KeyboardInteractivePromptDialog.svelte'
   import ConfirmDialog from './components/dialogs/ConfirmDialog.svelte'
+  import WorkspaceDialog from './components/dialogs/WorkspaceDialog.svelte'
 
   import { backend, on } from './services/backend'
   import { locale, type Locale } from './services/i18n'
@@ -63,6 +64,7 @@
   import { forwardingDialogHostId, initForwardingEvents } from './stores/forwarding'
   import { currentToolWindowKind } from './services/windowing'
   import { withErrorBanner } from './stores/notifications'
+  import { workspaceDialogOpen } from './stores/workspaces'
 
   let sidebar: Sidebar
 
@@ -209,7 +211,11 @@
     const next = list[nextIndex]
     if (!next) return
     activeTabId.set(next.tabId)
-    activeConnectionId.set(next.connectionId)
+    activeConnectionId.set(
+      next.kind === 'quick-connect' || next.kind === 'browser' || next.kind === 'connection-attempt'
+        ? null
+        : next.connectionId
+    )
   }
 
   async function copySSHCommandForActiveHost(): Promise<void> {
@@ -241,6 +247,9 @@
         break
       case 'file.settings':
         settingsOpen.set(true)
+        break
+      case 'file.workspaces':
+        workspaceDialogOpen.set(true)
         break
       case 'edit.editHost': {
         const host = selectedHost()
@@ -442,6 +451,7 @@
   <PassphrasePromptDialog />
   <HostKeyPromptDialog />
   <KeyboardInteractivePromptDialog />
+  <WorkspaceDialog />
   <ConfirmDialog />
   <CommandPalette />
   <NotificationBanner />
