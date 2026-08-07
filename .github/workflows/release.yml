@@ -318,15 +318,34 @@ jobs:
           install -Dm644 dist/stage/share/icons/hicolor/1024x1024/apps/ssh-first.png \
             AppDir/usr/share/icons/hicolor/1024x1024/apps/ssh-first.png
 
-          # WebKitGTK starts helper processes out of libexec and loads an
-          # injected bundle from its own library directory. Neither path is
-          # reachable from a relocated AppDir unless both are bundled and
-          # pointed at explicitly, which is what the hook below does.
+          # WebKitGTK starts helper processes out of a separate directory and
+          # loads an injected bundle from it. Neither is reachable from a
+          # relocated AppDir unless bundled and pointed at explicitly, which is
+          # what the hook below does.
+          #
+          # Where that directory lives is a distribution decision: Debian and
+          # Ubuntu use /usr/lib/<triplet>/webkitgtk-6.0, Arch uses
+          # /usr/lib/webkitgtk-6.0, others /usr/libexec/webkitgtk-6.0. Probe for
+          # the process binary instead of guessing, and fail with the actual
+          # locations listed if none of them matches.
+          webkit_dir=""
+          for candidate in /usr/libexec/webkitgtk-6.0 \
+                           /usr/lib/x86_64-linux-gnu/webkitgtk-6.0 \
+                           /usr/lib/webkitgtk-6.0; do
+            if [ -x "$candidate/WebKitWebProcess" ]; then
+              webkit_dir=$candidate
+              break
+            fi
+          done
+          if [ -z "$webkit_dir" ]; then
+            echo "::error::WebKitWebProcess not found in any known location"
+            find /usr/lib /usr/libexec -maxdepth 4 -name 'WebKit*Process' 2>/dev/null || true
+            exit 1
+          fi
+          echo "Bundling WebKitGTK helpers from $webkit_dir"
           mkdir -p AppDir/usr/libexec/webkitgtk-6.0
-          cp -a /usr/libexec/webkitgtk-6.0/. AppDir/usr/libexec/webkitgtk-6.0/
-          mkdir -p AppDir/usr/lib/x86_64-linux-gnu/webkitgtk-6.0
-          cp -a /usr/lib/x86_64-linux-gnu/webkitgtk-6.0/. \
-            AppDir/usr/lib/x86_64-linux-gnu/webkitgtk-6.0/ 2>/dev/null || true
+          cp -a "$webkit_dir"/. AppDir/usr/libexec/webkitgtk-6.0/
+          ls -la AppDir/usr/libexec/webkitgtk-6.0/
 
           mkdir -p AppDir/apprun-hooks
           cat > AppDir/apprun-hooks/webkitgtk.sh <<'HOOK'
@@ -334,7 +353,9 @@ jobs:
           # The injected bundle sits in a subdirectory on some distributions and
           # directly in the versioned directory on others, so probe rather than
           # hardcode: a wrong path here means a blank webview, not an error.
-          for candidate in "${APPDIR}"/usr/lib/*/webkitgtk-6.0/injected-bundle \
+          for candidate in "${APPDIR}"/usr/libexec/webkitgtk-6.0/injected-bundle \
+                           "${APPDIR}"/usr/libexec/webkitgtk-6.0 \
+                           "${APPDIR}"/usr/lib/*/webkitgtk-6.0/injected-bundle \
                            "${APPDIR}"/usr/lib/*/webkitgtk-6.0; do
             if [ -d "$candidate" ]; then
               export WEBKIT_INJECTED_BUNDLE_PATH="$candidate"

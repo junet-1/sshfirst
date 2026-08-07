@@ -51,6 +51,15 @@ modules:
     buildsystem: simple
     build-commands:
       - install -Dm755 ssh-first /app/bin/ssh-first
+
+      # flatpak build-export only exports files named after the app ID, so the
+      # icon has to be installed as org.wails.ssh_first.png. The .desktop file
+      # is the one shared with the deb and rpm, where the icon is plain
+      # "ssh-first"; leaving that key alone makes appstream-compose fail during
+      # export because the icon it names was never exported.
+      - sed -i 's/^Icon=ssh-first$/Icon=org.wails.ssh_first/'
+        org.wails.ssh_first.desktop
+      - grep '^Icon=org.wails.ssh_first$' org.wails.ssh_first.desktop
       - install -Dm644 org.wails.ssh_first.desktop
         /app/share/applications/org.wails.ssh_first.desktop
       - install -Dm644 org.wails.ssh_first.metainfo.xml
