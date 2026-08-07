@@ -302,7 +302,7 @@ jobs:
             -o DPkg::Lock::Timeout=300 \
             libgtk-4-1 libwebkitgtk-6.0-4 libfuse2t64 \
             librsvg2-common gstreamer1.0-plugins-base \
-            libgtk-4-dev pkg-config
+            libgtk-4-dev pkg-config imagemagick
           # linuxdeploy-plugin-gtk resolves the GTK module and typelib paths
           # with `pkg-config --variable=libdir gtk4`, so it needs gtk4.pc from
           # the -dev package even though nothing here is compiled. Without it
@@ -321,8 +321,17 @@ jobs:
             AppDir/usr/share/applications/org.wails.ssh_first.desktop
           install -Dm644 dist/stage/share/metainfo/org.wails.ssh_first.metainfo.xml \
             AppDir/usr/share/metainfo/org.wails.ssh_first.metainfo.xml
-          install -Dm644 dist/stage/share/icons/hicolor/1024x1024/apps/ssh-first.png \
-            AppDir/usr/share/icons/hicolor/1024x1024/apps/ssh-first.png
+
+          # linuxdeploy validates icon directories against the freedesktop size
+          # list, which stops at 512x512, and refuses the 1024x1024 original
+          # with "invalid x resolution". The file name has to stay ssh-first.png
+          # because that is the Icon key in the desktop entry.
+          im=$(command -v magick || command -v convert)
+          for size in 64 128 256 512; do
+            "$im" build/appicon.png -resize "${size}x${size}" "dist/icon-${size}.png"
+            install -Dm644 "dist/icon-${size}.png" \
+              "AppDir/usr/share/icons/hicolor/${size}x${size}/apps/ssh-first.png"
+          done
 
           # WebKitGTK starts helper processes out of a separate directory and
           # loads an injected bundle from it. Neither is reachable from a
@@ -390,7 +399,7 @@ jobs:
           ./linuxdeploy --appdir AppDir --plugin gtk --output appimage \
             --executable dist/stage/bin/ssh-first \
             --desktop-file AppDir/usr/share/applications/org.wails.ssh_first.desktop \
-            --icon-file AppDir/usr/share/icons/hicolor/1024x1024/apps/ssh-first.png
+            --icon-file AppDir/usr/share/icons/hicolor/256x256/apps/ssh-first.png
 
           mkdir -p dist
           mv "$OUTPUT" dist/
@@ -444,13 +453,12 @@ jobs:
           cp dist/stage/bin/ssh-first packaging/flatpak/ssh-first
           cp dist/stage/share/applications/org.wails.ssh_first.desktop packaging/flatpak/
           cp dist/stage/share/metainfo/org.wails.ssh_first.metainfo.xml packaging/flatpak/
-          cp build/appicon.png packaging/flatpak/appicon.png
-
-          # appstreamcli compose ignores the 1024x1024 original, so scale the
-          # sizes it actually looks for. ImageMagick 7 renamed convert to
+          # appstreamcli compose ignores a lone 1024x1024 icon, and
+          # build-export rejects anything above 512x512 outright, so scale the
+          # sizes that are actually usable. ImageMagick 7 renamed convert to
           # magick; Ubuntu 24.04 still ships 6, so accept either.
           im=$(command -v magick || command -v convert)
-          for size in 64 128 256; do
+          for size in 64 128 256 512; do
             "$im" build/appicon.png -resize "${size}x${size}" \
               "packaging/flatpak/appicon-${size}.png"
           done

@@ -75,8 +75,11 @@ modules:
         /app/share/icons/hicolor/128x128/apps/org.wails.ssh_first.png
       - install -Dm644 appicon-256.png
         /app/share/icons/hicolor/256x256/apps/org.wails.ssh_first.png
-      - install -Dm644 appicon.png
-        /app/share/icons/hicolor/1024x1024/apps/org.wails.ssh_first.png
+      # 512 is the ceiling: flatpak build-export rejects anything larger with
+      # "is not a valid icon: Image too large". The 1024x1024 original that
+      # build/appicon.png carries is therefore not shipped here.
+      - install -Dm644 appicon-512.png
+        /app/share/icons/hicolor/512x512/apps/org.wails.ssh_first.png
     sources:
       - type: file
         path: ssh-first
@@ -85,10 +88,10 @@ modules:
       - type: file
         path: org.wails.ssh_first.metainfo.xml
       - type: file
-        path: appicon.png
-      - type: file
         path: appicon-64.png
       - type: file
         path: appicon-128.png
       - type: file
         path: appicon-256.png
+      - type: file
+        path: appicon-512.png
