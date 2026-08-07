@@ -28,6 +28,7 @@ env:
 jobs:
   version:
     name: Resolve version
+    timeout-minutes: 5
     runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.resolve.outputs.version }}
@@ -59,6 +60,7 @@ jobs:
   build:
     name: Binary, tarball and .deb
     needs: version
+    timeout-minutes: 30
     runs-on: ubuntu-24.04
     env:
       VERSION: ${{ needs.version.outputs.version }}
@@ -82,10 +84,17 @@ jobs:
       # file".
       - run: npm install -g npm@12
 
+      # needrestart prompts during the long dependency tail of
+      # libwebkitgtk-6.0-dev and hangs the step; see the same note in ci.yml.
       - name: Install GTK4 and WebKitGTK development files
+        timeout-minutes: 10
+        env:
+          DEBIAN_FRONTEND: noninteractive
+          NEEDRESTART_MODE: a
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
+          sudo -E apt-get update -qq
+          sudo -E apt-get install -y --no-install-recommends \
+            -o DPkg::Lock::Timeout=300 \
             libgtk-4-dev libwebkitgtk-6.0-dev pkg-config
 
       - name: Build frontend
@@ -199,6 +208,7 @@ jobs:
   rpm:
     name: .rpm
     needs: version
+    timeout-minutes: 30
     runs-on: ubuntu-24.04
     container:
       image: fedora:42
@@ -269,6 +279,7 @@ jobs:
   appimage:
     name: AppImage
     needs: [version, build]
+    timeout-minutes: 25
     runs-on: ubuntu-24.04
     env:
       VERSION: ${{ needs.version.outputs.version }}
@@ -281,9 +292,14 @@ jobs:
           path: build/bin
 
       - name: Install runtime libraries to bundle
+        timeout-minutes: 10
+        env:
+          DEBIAN_FRONTEND: noninteractive
+          NEEDRESTART_MODE: a
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
+          sudo -E apt-get update -qq
+          sudo -E apt-get install -y --no-install-recommends \
+            -o DPkg::Lock::Timeout=300 \
             libgtk-4-1 libwebkitgtk-6.0-4 libfuse2t64 \
             librsvg2-common gstreamer1.0-plugins-base
 
@@ -361,6 +377,7 @@ jobs:
   flatpak:
     name: Flatpak bundle
     needs: [version, build]
+    timeout-minutes: 45
     runs-on: ubuntu-24.04
     env:
       VERSION: ${{ needs.version.outputs.version }}
@@ -373,9 +390,14 @@ jobs:
           path: build/bin
 
       - name: Install flatpak-builder
+        timeout-minutes: 10
+        env:
+          DEBIAN_FRONTEND: noninteractive
+          NEEDRESTART_MODE: a
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends flatpak flatpak-builder
+          sudo -E apt-get update -qq
+          sudo -E apt-get install -y --no-install-recommends \
+            -o DPkg::Lock::Timeout=300 flatpak flatpak-builder
           # Ubuntu 24.04 confines unprivileged user namespaces with AppArmor,
           # which stops the bubblewrap call flatpak-builder makes.
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
@@ -417,6 +439,7 @@ jobs:
     name: Publish release
     needs: [version, build, rpm, appimage, flatpak]
     if: needs.version.outputs.publish == 'true'
+    timeout-minutes: 15
     runs-on: ubuntu-24.04
     permissions:
       contents: write

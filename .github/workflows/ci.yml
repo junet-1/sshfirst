@@ -16,6 +16,7 @@ concurrency:
 jobs:
   go:
     name: Go tests
+    timeout-minutes: 25
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -36,10 +37,22 @@ jobs:
 
       # The Wails backend links GTK4 and WebKitGTK through cgo, so even `go
       # vet` needs the development headers present.
+      #
+      # libwebkitgtk-6.0-dev drags in a long tail of libraries, and on Ubuntu
+      # 24.04 needrestart interrupts that with a "which services should be
+      # restarted?" prompt nobody is there to answer, so the step hangs until
+      # the job times out. NEEDRESTART_MODE=a answers it, the lock timeout
+      # turns a contended dpkg lock into an error instead of a wait, and the
+      # step timeout caps the damage if apt finds a new way to stall.
       - name: Install GTK4 and WebKitGTK development files
+        timeout-minutes: 10
+        env:
+          DEBIAN_FRONTEND: noninteractive
+          NEEDRESTART_MODE: a
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
+          sudo -E apt-get update -qq
+          sudo -E apt-get install -y --no-install-recommends \
+            -o DPkg::Lock::Timeout=300 \
             libgtk-4-dev libwebkitgtk-6.0-dev pkg-config
 
       # main.go embeds frontend/dist, which is build output and therefore not
@@ -56,6 +69,7 @@ jobs:
 
   frontend:
     name: Frontend checks
+    timeout-minutes: 15
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -86,14 +100,20 @@ jobs:
 
   packaging:
     name: Packaging metadata
+    timeout-minutes: 10
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
       - name: Install validators
+        timeout-minutes: 10
+        env:
+          DEBIAN_FRONTEND: noninteractive
+          NEEDRESTART_MODE: a
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
+          sudo -E apt-get update -qq
+          sudo -E apt-get install -y --no-install-recommends \
+            -o DPkg::Lock::Timeout=300 \
             desktop-file-utils appstream shellcheck
 
       - name: Validate desktop entries
