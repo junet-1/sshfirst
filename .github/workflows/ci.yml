@@ -25,6 +25,15 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # See the frontend job: the lock file needs npm 12 to install.
+      - run: npm install -g npm@12
+
       # The Wails backend links GTK4 and WebKitGTK through cgo, so even `go
       # vet` needs the development headers present.
       - name: Install GTK4 and WebKitGTK development files
@@ -32,6 +41,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             libgtk-4-dev libwebkitgtk-6.0-dev pkg-config
+
+      # main.go embeds frontend/dist, which is build output and therefore not
+      # in the repository. Without it, even `go vet` fails to load package
+      # main with "pattern all:frontend/dist: no matching files found".
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
 
       - run: go vet ./...
       - run: go test ./...
