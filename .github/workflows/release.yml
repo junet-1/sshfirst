@@ -1,0 +1,471 @@
+name: Release
+
+# Push a tag to cut a release:
+#
+#   git tag v0.2.3 && git push origin v0.2.3
+#
+# workflow_dispatch builds the same artifacts without publishing them, which is
+# how you validate packaging changes before tagging.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build, without the leading v (e.g. 0.2.3)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  # org.gnome.Platform 48 provides GTK 4.18 and WebKitGTK 6.0.
+  GNOME_RUNTIME: '48'
+
+jobs:
+  version:
+    name: Resolve version
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      publish: ${{ steps.resolve.outputs.publish }}
+    steps:
+      - id: resolve
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            version="${{ inputs.version }}"
+            publish=false
+          else
+            version="${GITHUB_REF_NAME#v}"
+            publish=true
+          fi
+          # Packages reject anything that is not digits and dots (plus an
+          # optional prerelease suffix), so fail here rather than three jobs in.
+          if [[ ! "$version" =~ ^[0-9]+(\.[0-9]+)*([.-][A-Za-z0-9]+)?$ ]]; then
+            echo "::error::'$version' is not a usable package version" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+          echo "Building $version (publish: $publish)"
+
+  # Ubuntu 24.04 is the oldest distribution shipping WebKitGTK 6.0, so it is
+  # both the natural .deb target and the lowest glibc we can link against. The
+  # binary it produces is reused by the AppImage and the Flatpak.
+  build:
+    name: Binary, tarball and .deb
+    needs: version
+    runs-on: ubuntu-24.04
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install GTK4 and WebKitGTK development files
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgtk-4-dev libwebkitgtk-6.0-dev pkg-config
+
+      - name: Build frontend
+        working-directory: frontend
+        env:
+          APP_VERSION: ${{ env.VERSION }}
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build binary
+        env:
+          CGO_ENABLED: '1'
+        run: |
+          go build -trimpath -buildvcs=false -tags production \
+            -ldflags '-w -s' -o build/bin/ssh-first .
+          ./build/bin/ssh-first --help >/dev/null 2>&1 || true
+          file build/bin/ssh-first
+
+      - name: Stage install tree
+        run: |
+          packaging/stage-tree.sh "$VERSION" build/bin/ssh-first \
+            "dist/ssh-first-$VERSION-linux-x86_64"
+
+      - name: Build tarball
+        run: |
+          tar -C dist -czf "dist/ssh-first-$VERSION-linux-x86_64.tar.gz" \
+            "ssh-first-$VERSION-linux-x86_64"
+
+      - name: Build .deb
+        run: |
+          set -euo pipefail
+          stage="dist/ssh-first-$VERSION-linux-x86_64"
+          root="dist/debroot"
+
+          install -Dm755 "$stage/bin/ssh-first" "$root/usr/bin/ssh-first"
+          install -Dm644 "$stage/share/applications/org.wails.ssh_first.desktop" \
+            "$root/usr/share/applications/org.wails.ssh_first.desktop"
+          install -Dm644 "$stage/share/metainfo/org.wails.ssh_first.metainfo.xml" \
+            "$root/usr/share/metainfo/org.wails.ssh_first.metainfo.xml"
+          install -Dm644 "$stage/share/icons/hicolor/1024x1024/apps/ssh-first.png" \
+            "$root/usr/share/icons/hicolor/1024x1024/apps/ssh-first.png"
+          install -Dm644 "$stage/share/pixmaps/ssh-first.png" \
+            "$root/usr/share/pixmaps/ssh-first.png"
+          install -Dm644 "$stage/share/autostart/ssh-first.desktop" \
+            "$root/etc/xdg/autostart/ssh-first.desktop"
+          install -Dm644 LICENSE "$root/usr/share/doc/ssh-first/copyright"
+
+          # Let dpkg work out the real shared-library dependencies from the
+          # binary. The hardcoded list is only a fallback for when shlibdeps
+          # cannot run, so a packaging change never silently ships no Depends.
+          depends='libc6 (>= 2.38), libgtk-4-1 (>= 4.10.0), libwebkitgtk-6.0-4'
+          mkdir -p dist/shlibdeps/debian
+          printf 'Source: ssh-first\nPackage: ssh-first\nArchitecture: amd64\n' \
+            > dist/shlibdeps/debian/control
+          if ( cd dist/shlibdeps && dpkg-shlibdeps -O --ignore-missing-info \
+                 "../../$root/usr/bin/ssh-first" > deps.txt 2>/dev/null ); then
+            resolved=$(sed -n 's/^shlibs:Depends=//p' dist/shlibdeps/deps.txt)
+            if [[ -n "$resolved" ]]; then
+              depends=$resolved
+              echo "dpkg-shlibdeps resolved: $depends"
+            fi
+          else
+            echo "::warning::dpkg-shlibdeps failed, using the fallback Depends list"
+          fi
+
+          size=$(du -ks "$root" | cut -f1)
+          mkdir -p "$root/DEBIAN"
+          cat > "$root/DEBIAN/control" <<EOF
+          Package: ssh-first
+          Version: $VERSION
+          Section: net
+          Priority: optional
+          Architecture: amd64
+          Maintainer: Julian <juwolf11@googlemail.com>
+          Installed-Size: $size
+          Depends: $depends
+          Recommends: rsync, gnome-keyring | kwalletmanager
+          Homepage: https://github.com/junet-1/sshfirst
+          Description: SSH, SFTP and admin-panel workspace
+           SSH First keeps every server you administrate in one native window:
+           interactive SSH terminals, an SFTP file browser, port forwarding, and
+           the web control panels of your machines as tabs next to each other.
+           .
+           It imports hosts from ~/.ssh/config, stores passwords in the desktop
+           keyring rather than on disk, and saves whole layouts as shareable
+           JSON workspaces.
+          EOF
+
+          dpkg-deb --root-owner-group --build "$root" \
+            "dist/ssh-first_${VERSION}_amd64.deb"
+          dpkg-deb --info "dist/ssh-first_${VERSION}_amd64.deb"
+          dpkg-deb --contents "dist/ssh-first_${VERSION}_amd64.deb"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages-deb
+          path: |
+            dist/*.deb
+            dist/*.tar.gz
+          if-no-files-found: error
+
+      # The AppImage and Flatpak jobs link against this exact binary rather
+      # than rebuilding it, so all three artifacts are the same build.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binary-linux-amd64
+          path: build/bin/ssh-first
+          if-no-files-found: error
+
+  rpm:
+    name: .rpm
+    needs: version
+    runs-on: ubuntu-24.04
+    container:
+      image: fedora:42
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - name: Install build dependencies
+        run: |
+          dnf install -y --setopt=install_weak_deps=False \
+            gtk4-devel webkitgtk6.0-devel gcc pkgconf-pkg-config \
+            rpm-build rpmdevtools desktop-file-utils tar gzip findutils \
+            python3 git-core
+
+      - uses: actions/checkout@v4
+
+      # Fedora's golang trails go.mod's required version, so the toolchain
+      # comes from the action rather than from dnf.
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend
+        working-directory: frontend
+        env:
+          APP_VERSION: ${{ env.VERSION }}
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build binary
+        env:
+          CGO_ENABLED: '1'
+        run: |
+          go build -trimpath -buildvcs=false -tags production \
+            -ldflags '-w -s' -o build/bin/ssh-first .
+
+      - name: Build .rpm
+        run: |
+          set -euo pipefail
+          rpmdev-setuptree
+          packaging/stage-tree.sh "$VERSION" build/bin/ssh-first \
+            "dist/ssh-first-$VERSION-linux-x86_64"
+          tar -C dist -czf \
+            ~/rpmbuild/SOURCES/"ssh-first-$VERSION-linux-x86_64.tar.gz" \
+            "ssh-first-$VERSION-linux-x86_64"
+          rpmbuild -bb --define "version $VERSION" packaging/ssh-first.spec
+          mkdir -p dist/out
+          find ~/rpmbuild/RPMS -name '*.rpm' -exec cp {} dist/out/ \;
+          rpm -qip dist/out/*.rpm
+          rpm -qlp dist/out/*.rpm
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages-rpm
+          path: dist/out/*.rpm
+          if-no-files-found: error
+
+  appimage:
+    name: AppImage
+    needs: [version, build]
+    runs-on: ubuntu-24.04
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: binary-linux-amd64
+          path: build/bin
+
+      - name: Install runtime libraries to bundle
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgtk-4-1 libwebkitgtk-6.0-4 libfuse2t64 \
+            librsvg2-common gstreamer1.0-plugins-base
+
+      - name: Stage AppDir
+        run: |
+          set -euo pipefail
+          chmod +x build/bin/ssh-first
+          packaging/stage-tree.sh "$VERSION" build/bin/ssh-first dist/stage
+
+          # The binary itself is handed to linuxdeploy with --executable below,
+          # which is what makes it resolve and bundle the shared libraries.
+          install -Dm644 dist/stage/share/applications/org.wails.ssh_first.desktop \
+            AppDir/usr/share/applications/org.wails.ssh_first.desktop
+          install -Dm644 dist/stage/share/metainfo/org.wails.ssh_first.metainfo.xml \
+            AppDir/usr/share/metainfo/org.wails.ssh_first.metainfo.xml
+          install -Dm644 dist/stage/share/icons/hicolor/1024x1024/apps/ssh-first.png \
+            AppDir/usr/share/icons/hicolor/1024x1024/apps/ssh-first.png
+
+          # WebKitGTK starts helper processes out of libexec and loads an
+          # injected bundle from its own library directory. Neither path is
+          # reachable from a relocated AppDir unless both are bundled and
+          # pointed at explicitly, which is what the hook below does.
+          mkdir -p AppDir/usr/libexec/webkitgtk-6.0
+          cp -a /usr/libexec/webkitgtk-6.0/. AppDir/usr/libexec/webkitgtk-6.0/
+          mkdir -p AppDir/usr/lib/x86_64-linux-gnu/webkitgtk-6.0
+          cp -a /usr/lib/x86_64-linux-gnu/webkitgtk-6.0/. \
+            AppDir/usr/lib/x86_64-linux-gnu/webkitgtk-6.0/ 2>/dev/null || true
+
+          mkdir -p AppDir/apprun-hooks
+          cat > AppDir/apprun-hooks/webkitgtk.sh <<'HOOK'
+          export WEBKIT_EXEC_PATH="${APPDIR}/usr/libexec/webkitgtk-6.0"
+          # The injected bundle sits in a subdirectory on some distributions and
+          # directly in the versioned directory on others, so probe rather than
+          # hardcode: a wrong path here means a blank webview, not an error.
+          for candidate in "${APPDIR}"/usr/lib/*/webkitgtk-6.0/injected-bundle \
+                           "${APPDIR}"/usr/lib/*/webkitgtk-6.0; do
+            if [ -d "$candidate" ]; then
+              export WEBKIT_INJECTED_BUNDLE_PATH="$candidate"
+              break
+            fi
+          done
+          # The web content process is sandboxed with bubblewrap by default,
+          # which cannot see the mounted AppImage. Disabling it is what makes
+          # the bundled WebKit start at all.
+          export WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1
+          export WEBKIT_DISABLE_COMPOSITING_MODE=1
+          HOOK
+          chmod +x AppDir/apprun-hooks/webkitgtk.sh
+
+      - name: Build AppImage
+        run: |
+          set -euo pipefail
+          base=https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous
+          gtkplugin=https://raw.githubusercontent.com/linuxdeploy/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh
+          curl -fsSLo linuxdeploy "$base/linuxdeploy-x86_64.AppImage"
+          curl -fsSLo linuxdeploy-plugin-gtk.sh "$gtkplugin"
+          chmod +x linuxdeploy linuxdeploy-plugin-gtk.sh
+
+          export DEPLOY_GTK_VERSION=4
+          export OUTPUT="SSH_First-$VERSION-x86_64.AppImage"
+          ./linuxdeploy --appdir AppDir --plugin gtk --output appimage \
+            --executable dist/stage/bin/ssh-first \
+            --desktop-file AppDir/usr/share/applications/org.wails.ssh_first.desktop \
+            --icon-file AppDir/usr/share/icons/hicolor/1024x1024/apps/ssh-first.png
+
+          mkdir -p dist
+          mv "$OUTPUT" dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages-appimage
+          path: dist/*.AppImage
+          if-no-files-found: error
+
+  flatpak:
+    name: Flatpak bundle
+    needs: [version, build]
+    runs-on: ubuntu-24.04
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: binary-linux-amd64
+          path: build/bin
+
+      - name: Install flatpak-builder
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends flatpak flatpak-builder
+          # Ubuntu 24.04 confines unprivileged user namespaces with AppArmor,
+          # which stops the bubblewrap call flatpak-builder makes.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+
+      - name: Install the GNOME runtime
+        run: |
+          flatpak remote-add --if-not-exists --user flathub \
+            https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y --noninteractive flathub \
+            "org.gnome.Platform//${GNOME_RUNTIME}" "org.gnome.Sdk//${GNOME_RUNTIME}"
+
+      - name: Stage manifest sources
+        run: |
+          set -euo pipefail
+          chmod +x build/bin/ssh-first
+          packaging/stage-tree.sh "$VERSION" build/bin/ssh-first dist/stage
+          cp dist/stage/bin/ssh-first packaging/flatpak/ssh-first
+          cp dist/stage/share/applications/org.wails.ssh_first.desktop packaging/flatpak/
+          cp dist/stage/share/metainfo/org.wails.ssh_first.metainfo.xml packaging/flatpak/
+          cp build/appicon.png packaging/flatpak/appicon.png
+
+      - name: Build bundle
+        run: |
+          set -euo pipefail
+          flatpak-builder --user --force-clean --disable-rofiles-fuse \
+            --repo=dist/repo dist/flatpak-build \
+            packaging/flatpak/org.wails.ssh_first.yml
+          flatpak build-bundle dist/repo \
+            "dist/SSH_First-$VERSION-x86_64.flatpak" org.wails.ssh_first \
+            --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages-flatpak
+          path: dist/*.flatpak
+          if-no-files-found: error
+
+  publish:
+    name: Publish release
+    needs: [version, build, rpm, appimage, flatpak]
+    if: needs.version.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: packages-*
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums
+        working-directory: dist
+        run: |
+          sha256sum * > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Create release
+        run: |
+          set -euo pipefail
+          cat > notes.md <<EOF
+          ## Install
+
+          **Debian / Ubuntu 24.04+**
+          \`\`\`sh
+          sudo apt install ./ssh-first_${VERSION}_amd64.deb
+          \`\`\`
+
+          **Fedora**
+          \`\`\`sh
+          sudo dnf install ./ssh-first-${VERSION}-1.*.x86_64.rpm
+          \`\`\`
+
+          **Flatpak (any distribution)**
+          \`\`\`sh
+          flatpak install --user ./SSH_First-${VERSION}-x86_64.flatpak
+          \`\`\`
+
+          **AppImage**
+          \`\`\`sh
+          chmod +x SSH_First-${VERSION}-x86_64.AppImage
+          ./SSH_First-${VERSION}-x86_64.AppImage
+          \`\`\`
+
+          **Arch Linux**: build from the checkout with \`cd packaging && makepkg -si\`.
+
+          The \`.deb\`, \`.rpm\` and tarball use your distribution's GTK 4 and
+          WebKitGTK 6.0. The Flatpak and AppImage bring their own.
+
+          Verify downloads against \`SHA256SUMS\`.
+          EOF
+
+          gh release create "v$VERSION" \
+            --title "SSH First $VERSION" \
+            --notes-file notes.md \
+            --verify-tag \
+            dist/*

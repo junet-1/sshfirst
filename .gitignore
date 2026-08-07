@@ -3,6 +3,24 @@
 /frontend/dist/
 /frontend/package.json.md5
 
+# Release and packaging output. The release workflow stages everything under
+# dist/ and AppDir/; makepkg writes pkg/, src/ and the .pkg.tar.zst next to the
+# PKGBUILD. None of it belongs in the repository.
+/dist/
+/AppDir/
+/packaging/pkg/
+/packaging/src/
+/packaging/*.pkg.tar.zst
+/packaging/rpmbuild/
+/packaging/.flatpak-builder/
+
+# Copies that the Flatpak job stages next to its manifest so flatpak-builder
+# can pick them up as local file: sources.
+/packaging/flatpak/ssh-first
+/packaging/flatpak/appicon.png
+/packaging/flatpak/org.wails.ssh_first.desktop
+/packaging/flatpak/org.wails.ssh_first.metainfo.xml
+
 # Node.js
 **/node_modules/
 **/.vite/

@@ -10,7 +10,8 @@ All your servers in one window: terminals, file transfers, tunnels and web
 control panels, side by side. Local-first, no account, no cloud.
 
 <p>
-  <img src="https://img.shields.io/badge/version-0.2.2-2a6bd4?style=flat-square" alt="Version 0.2.2">
+  <a href="https://github.com/junet-1/sshfirst/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/junet-1/sshfirst/ci.yml?branch=main&style=flat-square&label=CI" alt="CI status"></a>
+  <a href="https://github.com/junet-1/sshfirst/releases/latest"><img src="https://img.shields.io/github/v/release/junet-1/sshfirst?style=flat-square&color=2a6bd4" alt="Latest release"></a>
   <img src="https://img.shields.io/badge/platform-Linux-4a5560?style=flat-square&logo=linux&logoColor=white" alt="Linux">
   <img src="https://img.shields.io/badge/desktop-KDE%20%C2%B7%20GNOME-4a5560?style=flat-square" alt="KDE and GNOME">
   <img src="https://img.shields.io/badge/license-MIT-2f8f5b?style=flat-square" alt="MIT License">
@@ -113,7 +114,25 @@ system, not like a website in a window.
 
 ## Installation
 
-### Arch Linux and Manjaro (recommended)
+Grab the package for your distribution from the
+[latest release](https://github.com/junet-1/sshfirst/releases/latest).
+
+| Distribution | Package | Install |
+| --- | --- | --- |
+| Debian, Ubuntu 24.04+ | `ssh-first_<version>_amd64.deb` | `sudo apt install ./ssh-first_<version>_amd64.deb` |
+| Fedora, RHEL | `ssh-first-<version>-1.*.x86_64.rpm` | `sudo dnf install ./ssh-first-<version>-1.*.x86_64.rpm` |
+| Any (sandboxed) | `SSH_First-<version>-x86_64.flatpak` | `flatpak install --user ./SSH_First-<version>-x86_64.flatpak` |
+| Any (portable) | `SSH_First-<version>-x86_64.AppImage` | `chmod +x` it and run it |
+| Any (manual) | `ssh-first-<version>-linux-x86_64.tar.gz` | unpack and run `./install.sh` |
+| Arch, Manjaro | build from source, see below | `cd packaging && makepkg -si` |
+
+The `.deb`, `.rpm` and the plain tarball use the GTK 4 and WebKitGTK 6.0 that
+your distribution already ships. The Flatpak and the AppImage bring their own,
+which makes them the right choice on anything older or more exotic.
+
+Every release is checksummed in `SHA256SUMS`.
+
+### Arch Linux and Manjaro
 
 ```bash
 git clone https://github.com/junet-1/sshfirst.git
@@ -126,18 +145,14 @@ application menu, registers the taskbar icon, and starts the app in the system
 tray on the next login. Launching from the menu opens the main window as usual.
 
 Optional but recommended: `gnome-keyring` or `kwallet` for secure password
-storage, and `rsync` for faster SFTP transfers.
-
-### Other distributions
-
-SSH First is built from source with Go and Node.js. See
-[Building from source](#building-from-source) below.
+storage, and `rsync` for faster SFTP transfers. The `.deb` and `.rpm` pull these
+in as recommended packages already.
 
 ### Updating
 
-Re-run `makepkg -si` in `packaging/`. If a development build is still running,
-close it once and start SSH First from the application menu afterwards, so the
-taskbar picks up the installed entry.
+Install the newer package the same way you installed the current one. If a
+development build is still running, close it once and start SSH First from the
+application menu afterwards, so the taskbar picks up the installed entry.
 
 ## Getting started
 
@@ -253,6 +268,28 @@ Covered: SSH config parsing (including `Include` and wildcard patterns), SQLite
 storage CRUD, `ProxyJump` parsing, `known_hosts` persistence and replacement,
 and Secret Service read/write/delete against `go-keyring`'s in-memory mock, so
 tests never touch a real keyring.
+
+### Cutting a release
+
+Packages are built by [`.github/workflows/release.yml`](.github/workflows/release.yml).
+Pushing a tag builds all formats and publishes them:
+
+```sh
+git tag v0.2.3
+git push origin v0.2.3
+```
+
+To validate packaging changes without publishing anything, run the same
+workflow from the Actions tab with `workflow_dispatch` and a version number.
+It produces the identical artifacts and skips only the publish step.
+
+The tag also becomes the version in the About dialog: `APP_VERSION` is passed
+to Vite, which substitutes it for `__APP_VERSION__`. Local builds show
+`0.0.0-dev`.
+
+Every format is derived from one staging tree built by
+[`packaging/stage-tree.sh`](packaging/stage-tree.sh), so the `.deb`, `.rpm`,
+tarball and Flatpak cannot drift apart in what they install or where.
 
 ### Project layout
 

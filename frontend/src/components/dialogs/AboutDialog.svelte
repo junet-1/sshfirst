@@ -6,8 +6,8 @@
   import { aboutOpen } from '../../stores/ui'
   import logoUrl from '../../../../build/appicon.png'
 
-  const VERSION = '0.2.1a'
-  const GITHUB_URL = 'https://github.com/junet-1'
+  const VERSION = __APP_VERSION__
+  const GITHUB_URL = 'https://github.com/junet-1/sshfirst'
 
   function close(): void {
     aboutOpen.set(false)

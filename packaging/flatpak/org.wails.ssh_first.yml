@@ -1,0 +1,68 @@
+# Flatpak bundle manifest.
+#
+# The app ID must stay org.wails.ssh_first: Wails v3 derives its GTK
+# application ID from LinuxOptions.ProgramName as "org.wails.<name>", and
+# Flatpak requires the .desktop file to be named after the app ID for the
+# shell to match a window to its icon. Renaming this without changing
+# ProgramName in main.go gives a generic taskbar icon.
+#
+# The binary is compiled by the release workflow and dropped next to this file,
+# rather than built here: flatpak-builder runs without network access, so an
+# in-manifest Go/npm build would need vendored modules and a generated npm
+# source list. Ubuntu 24.04 and the GNOME 48 runtime share glibc 2.39 and the
+# same GTK4/WebKitGTK sonames, so the prebuilt binary resolves inside the
+# sandbox. (Flathub would require building from source here instead.)
+
+app-id: org.wails.ssh_first
+runtime: org.gnome.Platform
+runtime-version: '48'
+sdk: org.gnome.Sdk
+command: ssh-first
+
+finish-args:
+  # Windowing. main.go forces GDK_BACKEND=x11 so it can restore window
+  # geometry, which Wayland forbids a client from doing, hence fallback-x11.
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --share=ipc
+  - --device=dri
+
+  # SSH, SFTP and the embedded web panels all need outbound network.
+  - --share=network
+
+  # Agent forwarding, and the keys/config under ~/.ssh. The SFTP browser also
+  # needs to reach the files a user picks for transfer.
+  - --socket=ssh-auth
+  - --filesystem=home
+
+  # Passwords and passphrases live in the Secret Service, never on disk.
+  - --talk-name=org.freedesktop.secrets
+
+  # Desktop notifications for finished transfers and dropped connections.
+  - --talk-name=org.freedesktop.Notifications
+
+  # System tray icon (KDE, and GNOME with the AppIndicator extension).
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.ayatana.indicator.application
+  - --own-name=org.kde.StatusNotifierItem-2-1
+
+modules:
+  - name: ssh-first
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 ssh-first /app/bin/ssh-first
+      - install -Dm644 org.wails.ssh_first.desktop
+        /app/share/applications/org.wails.ssh_first.desktop
+      - install -Dm644 org.wails.ssh_first.metainfo.xml
+        /app/share/metainfo/org.wails.ssh_first.metainfo.xml
+      - install -Dm644 appicon.png
+        /app/share/icons/hicolor/1024x1024/apps/org.wails.ssh_first.png
+    sources:
+      - type: file
+        path: ssh-first
+      - type: file
+        path: org.wails.ssh_first.desktop
+      - type: file
+        path: org.wails.ssh_first.metainfo.xml
+      - type: file
+        path: appicon.png

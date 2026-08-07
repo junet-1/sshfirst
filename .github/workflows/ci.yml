@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  go:
+    name: Go tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # The Wails backend links GTK4 and WebKitGTK through cgo, so even `go
+      # vet` needs the development headers present.
+      - name: Install GTK4 and WebKitGTK development files
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgtk-4-dev libwebkitgtk-6.0-dev pkg-config
+
+      - run: go vet ./...
+      - run: go test ./...
+
+  frontend:
+    name: Frontend checks
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - working-directory: frontend
+        run: npm ci
+
+      # svelte-check runs TypeScript in strict mode plus Svelte's own
+      # diagnostics.
+      - working-directory: frontend
+        run: npm run check
+
+      - working-directory: frontend
+        run: npm run test
+
+  packaging:
+    name: Packaging metadata
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install validators
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            desktop-file-utils appstream shellcheck
+
+      - name: Validate desktop entries
+        run: |
+          desktop-file-validate packaging/ssh-first.desktop
+          desktop-file-validate packaging/ssh-first-autostart.desktop
+
+      # Catches a malformed metainfo file here rather than three minutes into
+      # the Flatpak build during a release.
+      - name: Validate AppStream metadata
+        run: appstreamcli validate --no-net packaging/org.wails.ssh_first.metainfo.xml
+
+      - name: Check packaging scripts
+        run: shellcheck packaging/stage-tree.sh

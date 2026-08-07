@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The component ID must match the GTK application ID that Wails derives from
+  LinuxOptions.ProgramName ("ssh-first" becomes org.wails.ssh_first), because
+  desktop shells match a toplevel window to its .desktop file by that ID.
+  Changing it here without changing ProgramName breaks the taskbar icon.
+-->
+<component type="desktop-application">
+  <id>org.wails.ssh_first</id>
+  <launchable type="desktop-id">org.wails.ssh_first.desktop</launchable>
+
+  <name>SSH First</name>
+  <summary>SSH, SFTP and admin-panel workspace</summary>
+
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+
+  <developer id="io.github.junet_1">
+    <name>Julian</name>
+  </developer>
+
+  <description>
+    <p>
+      SSH First keeps every server you administrate in one native window:
+      interactive SSH terminals, an SFTP file browser, port forwarding, and the
+      web control panels of your machines as tabs next to each other.
+    </p>
+    <p>Features:</p>
+    <ul>
+      <li>Imports hosts from ~/.ssh/config, including jump hosts</li>
+      <li>Many terminal tabs per connection, with split panes and search</li>
+      <li>Broadcast input to all tabs, and reusable command snippets</li>
+      <li>SFTP browsing with uploads, downloads and drag-and-drop</li>
+      <li>Local, remote and dynamic SOCKS5 port forwarding</li>
+      <li>Admin panels embedded as tabs next to their server</li>
+      <li>Saved workspaces as plain, shareable JSON</li>
+      <li>Passwords stored in the desktop keyring, never on disk</li>
+    </ul>
+    <p>
+      Local-first: no account, no telemetry, no sync service. SSH First only
+      talks to the servers you point it at.
+    </p>
+  </description>
+
+  <categories>
+    <category>Network</category>
+    <category>RemoteAccess</category>
+  </categories>
+
+  <keywords>
+    <keyword>ssh</keyword>
+    <keyword>sftp</keyword>
+    <keyword>terminal</keyword>
+    <keyword>remote</keyword>
+    <keyword>shell</keyword>
+  </keywords>
+
+  <url type="homepage">https://github.com/junet-1/sshfirst</url>
+  <url type="bugtracker">https://github.com/junet-1/sshfirst/issues</url>
+  <url type="vcs-browser">https://github.com/junet-1/sshfirst</url>
+
+  <screenshots>
+    <screenshot type="default">
+      <caption>Three SSH sessions in a split layout</caption>
+      <image>https://raw.githubusercontent.com/junet-1/sshfirst/main/preview/SplitView.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>The command palette reaching every tab, host and action</caption>
+      <image>https://raw.githubusercontent.com/junet-1/sshfirst/main/preview/crtlkView.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>A web control panel opened as a tab</caption>
+      <image>https://raw.githubusercontent.com/junet-1/sshfirst/main/preview/WebView.png</image>
+    </screenshot>
+  </screenshots>
+
+  <content_rating type="oars-1.1"/>
+
+  <recommends>
+    <control>keyboard</control>
+    <control>pointing</control>
+  </recommends>
+
+  <requires>
+    <display_length compare="ge">960</display_length>
+  </requires>
+
+  <!-- The release workflow rewrites this block from the pushed tag. -->
+  <releases>
+    <release version="0.2.2" date="2026-08-07">
+      <description>
+        <p>Workspaces, embedded web panels and split terminal layouts.</p>
+      </description>
+    </release>
+  </releases>
+</component>
