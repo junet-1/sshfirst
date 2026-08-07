@@ -1,10 +1,10 @@
 # Maintainer: Julian <juwolf11@googlemail.com>
 pkgname=ssh-first
-pkgver=0.2.2
-pkgrel=3
+pkgver=0.2.3
+pkgrel=1
 pkgdesc="A focused SSH and SFTP workspace"
 arch=('x86_64')
-url="https://github.com/junet-1"
+url="https://github.com/junet-1/sshfirst"
 license=('MIT')
 # Runtime: the default Wails v3 backend links GTK4 + WebKitGTK 6.0.
 depends=('gtk4' 'webkitgtk-6.0')
@@ -20,7 +20,9 @@ build() {
   cd "$startdir/.."
 
   # Frontend: install deps and produce frontend/dist (embedded into the binary).
-  ( cd frontend && npm ci && npm run build )
+  # APP_VERSION is what vite.config.ts substitutes for __APP_VERSION__, so
+  # without it the About dialog of an Arch build reports 0.0.0-dev.
+  ( cd frontend && npm ci && APP_VERSION="$pkgver" npm run build )
 
   # Production binary. CGO must be on for the GTK/WebKit bridge; default build
   # tags select the GTK4 + webkitgtk-6.0 backend.
