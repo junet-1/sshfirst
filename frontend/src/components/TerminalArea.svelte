@@ -35,6 +35,7 @@
         <BrowserPane
           tabId={tab.tabId}
           url={tab.url ?? ''}
+          resourceHostId={tab.resourceHostId}
           {visible}
           rect={$isSplit ? rects.get(tab.tabId) ?? null : null}
         />

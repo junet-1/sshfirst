@@ -11,6 +11,8 @@
 
   let form: HostInput = emptyHostInput()
   let tagsText = ''
+  let webPassword = ''
+  let webPasswordInput: HTMLInputElement | null = null
   let saving = false
   let error: string | null = null
   let loadedDialogKey = ''
@@ -25,19 +27,23 @@
   $: dialogKey = $hostDialog.open ? String($hostDialog.editingId ?? 'new') : ''
   $: if (dialogKey && dialogKey !== loadedDialogKey) {
     loadedDialogKey = dialogKey
-    resetForm($hostDialog.editingId)
-    void loadSnippets($hostDialog.editingId ?? 0)
-  }
-  $: if (!dialogKey) loadedDialogKey = ''
-
-  function resetForm(editingId: number | null): void {
-    const editing = editingId != null ? $hosts.find((host) => host.id === editingId) : null
+    // Keep these assignments in the reactive block itself. Svelte can then see
+    // that loading an existing host writes `form` and orders the derived
+    // isWeb/usesCredential values after it. Hiding the assignment in a helper
+    // made the first paint use the empty SSH form until another input event
+    // invalidated `form`.
+    const editing = $hostDialog.editingId != null
+      ? $hosts.find((host) => host.id === $hostDialog.editingId)
+      : null
     const next = editing ? hostToInput(editing) : emptyHostInput()
     form = next
     tagsText = next.tags.join(', ')
+    webPassword = ''
     error = null
     saving = false
+    void loadSnippets($hostDialog.editingId ?? 0)
   }
+  $: if (!dialogKey) loadedDialogKey = ''
 
   function close(): void {
     if (saving) return
@@ -81,6 +87,14 @@
     return null
   }
 
+  function focusWebPassword(event: KeyboardEvent): void {
+    if (event.key !== 'Enter') return
+    // Enter in the username field must not implicitly submit and close the
+    // complete host editor. Continue with the password field instead.
+    event.preventDefault()
+    webPasswordInput?.focus()
+  }
+
   async function save(): Promise<void> {
     if (saving) return
     error = validationError()
@@ -92,7 +106,7 @@
         ...form,
         label: form.label.trim(),
         hostname: form.protocol === 'web' ? '' : form.hostname.trim(),
-        user: form.protocol === 'web' ? '' : form.user.trim(),
+        user: form.user.trim(),
         identityFiles: form.protocol !== 'web' && form.authMethod === 'identity' ? [...form.identityFiles] : [],
         controlPanelUrl: normalizePanelUrl(form.controlPanelUrl),
         remotePath: form.protocol === 'sftp' ? form.remotePath.trim() || '.' : '.',
@@ -103,8 +117,10 @@
           .map((tag) => tag.trim())
           .filter(Boolean)
       }
-      if ($hostDialog.editingId != null) await updateHost($hostDialog.editingId, input)
-      else await createHost(input)
+      const saved = $hostDialog.editingId != null
+        ? await updateHost($hostDialog.editingId, input)
+        : await createHost(input)
+      if (form.protocol === 'web' && webPassword) await backend.setWebPassword(saved.id, webPassword)
       hostDialog.set({ open: false, editingId: null })
     } catch (caught) {
       error = caught instanceof Error ? caught.message : String(caught)
@@ -150,6 +166,30 @@
                 required
               />
               <small>{$t('hostDialog.url.help')}</small>
+            </span>
+          </label>
+          <label class="form-row">
+            <span>{$t('hostDialog.webEmail')}</span>
+            <input
+              type="text"
+              bind:value={form.user}
+              autocomplete="off"
+              placeholder={$t('hostDialog.webEmail.placeholder')}
+              spellcheck="false"
+              on:keydown={focusWebPassword}
+            />
+          </label>
+          <label class="form-row">
+            <span>{$t('hostDialog.webPassword')}</span>
+            <span class="control-stack">
+              <input
+                bind:this={webPasswordInput}
+                type="password"
+                bind:value={webPassword}
+                autocomplete="new-password"
+                placeholder={$hostDialog.editingId != null ? '••••••••' : ''}
+              />
+              <small>{$t($hostDialog.editingId != null ? 'hostDialog.webPassword.keep' : 'hostDialog.webPassword.help')}</small>
             </span>
           </label>
         {:else}

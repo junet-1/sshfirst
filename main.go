@@ -12,6 +12,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/events"
 
 	backendapp "ssh-first/internal/app"
+	"ssh-first/internal/webautofill"
 	"ssh-first/internal/webkitcookies"
 )
 
@@ -121,6 +122,19 @@ func main() {
 			mainWindow.Hide()
 			event.Cancel()
 		}
+	})
+
+	// Cross-origin panels are deliberately isolated in iframes, so ordinary
+	// frontend JavaScript cannot reach their login fields. Install a tiny native
+	// WebKit user script in all frames; it contains no secrets and only reacts to
+	// credentials explicitly targeted at the panel's configured origin.
+	var installAutofillOnce sync.Once
+	mainWindow.RegisterHook(events.Common.WindowRuntimeReady, func(*application.WindowEvent) {
+		installAutofillOnce.Do(func() {
+			application.InvokeAsync(func() {
+				webautofill.Install(mainWindow.NativeWindow())
+			})
+		})
 	})
 
 	// Enable on-disk cookie storage on the WebKit default network session (which

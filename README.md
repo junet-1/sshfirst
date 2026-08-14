@@ -78,6 +78,7 @@ system, not like a website in a window.
 ### Web panels
 
 - Open a server's admin panel as an embedded tab right next to its terminal
+- Optional email/username and password autofill with automatic sign-in
 - Loaded straight from your machine, with no proxy in between
 - One click to fall back to your normal browser for panels that refuse embedding
 
@@ -191,6 +192,9 @@ Passwords and passphrases you choose to save go into your desktop's keyring
 - **Secrets stay in the keyring.** Passwords and private-key passphrases are
   never written to the database or to log files. They live only in the Linux
   Secret Service (GNOME Keyring or KWallet).
+- **Web autofill is origin-scoped.** A saved web password is sent only to the
+  exact origin configured for that web host and is kept separate from SSH
+  passwords in the keyring.
 - **Host key verification is mandatory.** Unknown keys need explicit
   confirmation, and a *changed* key is shown as a security warning rather than a
   routine prompt.

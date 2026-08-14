@@ -35,6 +35,23 @@ func DeleteHostPassword(hostID int64) error {
 	return del(passwordKey(hostID))
 }
 
+// SetWebPassword stores a web-panel password separately from SSH
+// authentication, so switching a host's protocol can never reuse one secret
+// for the other purpose.
+func SetWebPassword(hostID int64, password string) error {
+	return keyring.Set(service, webPasswordKey(hostID), password)
+}
+
+// GetWebPassword retrieves a saved web-panel password.
+func GetWebPassword(hostID int64) (string, error) {
+	return get(webPasswordKey(hostID))
+}
+
+// DeleteWebPassword removes a saved web-panel password, if any.
+func DeleteWebPassword(hostID int64) error {
+	return del(webPasswordKey(hostID))
+}
+
 // SetCredentialPassword stores (or replaces) the login password for a reusable
 // credential, shared by every host that references it.
 func SetCredentialPassword(credentialID int64, password string) error {
@@ -89,6 +106,10 @@ func del(key string) error {
 
 func passwordKey(hostID int64) string {
 	return fmt.Sprintf("host-password:%d", hostID)
+}
+
+func webPasswordKey(hostID int64) string {
+	return fmt.Sprintf("web-password:%d", hostID)
 }
 
 func credentialPasswordKey(credentialID int64) string {

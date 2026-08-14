@@ -496,6 +496,14 @@ export function SetSetting(key: string, value: string): $CancellablePromise<void
 }
 
 /**
+ * SetWebPassword stores or replaces a web host's autofill password in the
+ * system secret store. An empty password removes the saved secret.
+ */
+export function SetWebPassword(hostID: number, password: string): $CancellablePromise<void> {
+    return $Call.ByID(3802808412, hostID, password);
+}
+
+/**
  * StartForward opens the tunnel for ruleID on an established connection.
  */
 export function StartForward(connectionID: string, ruleID: number): $CancellablePromise<$models.ActiveForward> {
@@ -577,6 +585,15 @@ export function UploadSFTP(tabID: string, localPath: string, remoteDir: string):
     return $Call.ByID(858723587, tabID, localPath, remoteDir).then(($result: any) => {
         return $$createType18($result);
     });
+}
+
+/**
+ * WebPassword returns a web host's autofill password, or "" when none is
+ * stored. Web secrets use their own keyring namespace and can never be reused
+ * accidentally as an SSH password after a protocol change.
+ */
+export function WebPassword(hostID: number): $CancellablePromise<string> {
+    return $Call.ByID(429502310, hostID);
 }
 
 /**

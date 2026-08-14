@@ -55,6 +55,28 @@ func TestHostPasswordIsolatedPerHost(t *testing.T) {
 	}
 }
 
+func TestWebPasswordIsSeparatedFromSSHPassword(t *testing.T) {
+	const hostID = int64(77)
+	if err := SetHostPassword(hostID, "ssh-secret"); err != nil {
+		t.Fatalf("SetHostPassword: %v", err)
+	}
+	if err := SetWebPassword(hostID, "web-secret"); err != nil {
+		t.Fatalf("SetWebPassword: %v", err)
+	}
+	if got, err := GetHostPassword(hostID); err != nil || got != "ssh-secret" {
+		t.Fatalf("GetHostPassword = %q, %v", got, err)
+	}
+	if got, err := GetWebPassword(hostID); err != nil || got != "web-secret" {
+		t.Fatalf("GetWebPassword = %q, %v", got, err)
+	}
+	if err := DeleteWebPassword(hostID); err != nil {
+		t.Fatalf("DeleteWebPassword: %v", err)
+	}
+	if _, err := GetWebPassword(hostID); err != ErrNotFound {
+		t.Fatalf("expected deleted web password to be missing, got %v", err)
+	}
+}
+
 func TestIdentityPassphraseRoundTrip(t *testing.T) {
 	const path = "/home/user/.ssh/id_ed25519"
 

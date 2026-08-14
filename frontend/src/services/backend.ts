@@ -42,6 +42,8 @@ export const backend = {
   favicon: (url: string): Promise<string> => Backend.Favicon(url),
   hostUsername: (id: number): Promise<string> => Backend.HostUsername(id),
   hostPassword: (id: number): Promise<string> => Backend.HostPassword(id),
+  webPassword: (id: number): Promise<string> => Backend.WebPassword(id),
+  setWebPassword: (id: number, password: string): Promise<void> => Backend.SetWebPassword(id, password),
 
   listCredentials: (): Promise<Credential[]> => Backend.ListCredentials() as unknown as Promise<Credential[]>,
   createCredential: (input: CredentialInput): Promise<Credential> =>

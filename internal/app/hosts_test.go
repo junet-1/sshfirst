@@ -47,6 +47,8 @@ func TestNormalizeHostInputWebStripsSSHFields(t *testing.T) {
 	in := storage.HostInput{
 		Label:           "panel",
 		Protocol:        storage.HostProtocolWeb,
+		User:            "  admin@example.com  ",
+		AuthMethod:      storage.AuthMethodAgent,
 		ControlPanelURL: "  https://panel.example.com  ",
 		ProxyJump:       "bastion",
 		LoginScript:     "tmux",
@@ -59,5 +61,8 @@ func TestNormalizeHostInputWebStripsSSHFields(t *testing.T) {
 	}
 	if out.ProxyJump != "" || out.LoginScript != "" || out.ForwardAgent || len(out.IdentityFiles) != 0 {
 		t.Errorf("SSH-only fields not stripped for web host: %+v", out)
+	}
+	if out.User != "admin@example.com" || out.AuthMethod != storage.AuthMethodPassword {
+		t.Errorf("web autofill identity not retained: %+v", out)
 	}
 }

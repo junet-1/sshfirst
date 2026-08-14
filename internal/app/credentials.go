@@ -101,6 +101,46 @@ func (a *App) HostPassword(hostID int64) (string, error) {
 	return pw, err
 }
 
+// WebPassword returns a web host's autofill password, or "" when none is
+// stored. Web secrets use their own keyring namespace and can never be reused
+// accidentally as an SSH password after a protocol change.
+func (a *App) WebPassword(hostID int64) (string, error) {
+	if err := a.requireStore(); err != nil {
+		return "", err
+	}
+	host, err := a.store.GetHost(hostID)
+	if err != nil {
+		return "", err
+	}
+	if host.Protocol != storage.HostProtocolWeb {
+		return "", fmt.Errorf("host %d is not a web host", hostID)
+	}
+	password, err := secrets.GetWebPassword(hostID)
+	if errors.Is(err, secrets.ErrNotFound) {
+		return "", nil
+	}
+	return password, err
+}
+
+// SetWebPassword stores or replaces a web host's autofill password in the
+// system secret store. An empty password removes the saved secret.
+func (a *App) SetWebPassword(hostID int64, password string) error {
+	if err := a.requireStore(); err != nil {
+		return err
+	}
+	host, err := a.store.GetHost(hostID)
+	if err != nil {
+		return err
+	}
+	if host.Protocol != storage.HostProtocolWeb {
+		return fmt.Errorf("host %d is not a web host", hostID)
+	}
+	if password == "" {
+		return secrets.DeleteWebPassword(hostID)
+	}
+	return secrets.SetWebPassword(hostID, password)
+}
+
 // resolvedAuth is the effective login identity for a connection: taken from a
 // referenced credential when the host has one, otherwise from the host's own
 // inline fields. passwordOwner picks the Secret Service key namespace.

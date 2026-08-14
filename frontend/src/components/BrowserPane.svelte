@@ -4,15 +4,21 @@
   import { backend } from '../services/backend'
   import { ensureFavicon, faviconOrigin, favicons } from '../stores/favicons'
   import type { Rect } from '../lib/layoutTree'
+  import { onMount } from 'svelte'
 
   // visible: this pane is part of the current layout (soloed tab, or a tiled
   // pane in split mode). rect: its box in percent when tiled, else null.
   export let tabId: string
   export let url: string
+  export let resourceHostId: number | undefined = undefined
   export let visible: boolean
   export let rect: Rect | null = null
 
   let iframeEl: HTMLIFrameElement | null = null
+  let autofillTimers: ReturnType<typeof setTimeout>[] = []
+  let credentials: { email: string; password: string } | null = null
+  let credentialsHostId: number | undefined
+  let autofillComplete = false
 
   // The panel's favicon via the shared backend cache, globe as fallback.
   $: void ensureFavicon(url)
@@ -25,8 +31,77 @@
   // Reassigning src reloads the frame even for a cross-origin panel, where
   // contentWindow.location.reload() would throw.
   function reload(): void {
+    // An explicit reload is also the opt-in to retry autofill after logout or
+    // after correcting a saved password.
+    autofillComplete = false
+    credentials = null
+    credentialsHostId = undefined
+    clearAutofillTimers()
     if (iframeEl) iframeEl.src = url
   }
+
+  function clearAutofillTimers(): void {
+    for (const timer of autofillTimers) clearTimeout(timer)
+    autofillTimers = []
+  }
+
+  async function loadAutofillCredentials(): Promise<{ email: string; password: string } | null> {
+    if (!resourceHostId) return null
+    if (credentialsHostId === resourceHostId && credentials) return credentials
+    const [email, password] = await Promise.all([
+      backend.hostUsername(resourceHostId),
+      backend.webPassword(resourceHostId)
+    ])
+    credentialsHostId = resourceHostId
+    // Some panels (notably FRITZ!Box) preselect the account and only ask for a
+    // password. A missing username must not suppress password-only autofill.
+    credentials = password ? { email, password } : null
+    return credentials
+  }
+
+  // WebKit injects the receiver into the cross-origin frame. Messages are sent
+  // only to the exact configured origin; repeating briefly also covers SPAs and
+  // two-step login pages that render or navigate after the iframe load event.
+  async function autofill(): Promise<void> {
+    clearAutofillTimers()
+    if (autofillComplete || !iframeEl?.contentWindow || !resourceHostId) return
+    try {
+      const targetOrigin = new URL(url).origin
+      const saved = await loadAutofillCredentials()
+      if (!saved || !iframeEl?.contentWindow) return
+      const send = () => iframeEl?.contentWindow?.postMessage({
+        type: 'ssh-first:web-autofill',
+        targetOrigin,
+        email: saved.email,
+        password: saved.password
+      }, targetOrigin)
+      for (const delay of [0, 250, 750, 1500, 3000, 6000, 10000]) {
+        autofillTimers.push(setTimeout(send, delay))
+      }
+    } catch {
+      // Invalid URLs are rejected by the host editor; a stale workspace entry
+      // should simply keep ordinary browser behavior instead of failing a tab.
+    }
+  }
+
+  onMount(() => {
+    const handleAutofillComplete = (event: MessageEvent) => {
+      if (event.source !== iframeEl?.contentWindow) return
+      if (!event.data || event.data.type !== 'ssh-first:web-autofill-submitted') return
+      try {
+        if (event.origin !== new URL(url).origin || event.data.targetOrigin !== event.origin) return
+      } catch {
+        return
+      }
+      autofillComplete = true
+      clearAutofillTimers()
+    }
+    window.addEventListener('message', handleAutofillComplete)
+    return () => {
+      window.removeEventListener('message', handleAutofillComplete)
+      clearAutofillTimers()
+    }
+  })
 
   function openExternally(): void {
     backend.openExternalURL(url)
@@ -58,7 +133,13 @@
   <div class="frame-wrap">
     <!-- A cross-origin iframe cannot reach the app's Wails bindings (same-origin
          policy), so the panel is isolated from the SSH backend by construction. -->
-    <iframe bind:this={iframeEl} src={url} title={$t('browser.frameTitle')} data-tab-id={tabId}></iframe>
+    <iframe
+      bind:this={iframeEl}
+      src={url}
+      title={$t('browser.frameTitle')}
+      data-tab-id={tabId}
+      on:load={autofill}
+    ></iframe>
     <p class="blocked-hint">
       {$t('browser.blockedHint')}
     </p>

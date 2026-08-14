@@ -16,7 +16,10 @@ import (
 // host, since the same key may be reused by other hosts — they are left
 // alone.
 func secretsCleanupForHost(hostID int64) error {
-	return secrets.DeleteHostPassword(hostID)
+	return errors.Join(
+		secrets.DeleteHostPassword(hostID),
+		secrets.DeleteWebPassword(hostID),
+	)
 }
 
 // ListHosts returns every known host (manual + imported), for the sidebar list.
@@ -104,14 +107,17 @@ func normalizeHostInput(input storage.HostInput) storage.HostInput {
 		input.ForwardAgent = false
 		input.LoginScript = ""
 	case storage.HostProtocolWeb:
-		// A web host has no SSH transport: strip every SSH/SFTP-only field so a
-		// protocol switch can't leave stale auth or startup behavior behind.
+		// A web host has no SSH transport. User is intentionally retained as the
+		// email/login name used by browser autofill; the remaining SSH/SFTP-only
+		// fields are stripped so a protocol switch cannot leave stale behavior.
+		input.User = strings.TrimSpace(input.User)
 		input.ForwardAgent = false
 		input.LoginScript = ""
 		input.RemotePath = "."
 		input.IdentityFiles = []string{}
 		input.ProxyJump = ""
-		input.AuthMethod = storage.AuthMethodAgent
+		input.AuthMethod = storage.AuthMethodPassword
+		input.CredentialID = nil
 	}
 	return input
 }
