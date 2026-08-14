@@ -67,6 +67,54 @@ jobs:
       - run: go vet ./...
       - run: go test ./...
 
+  # The macOS build links WKWebView and Objective-C through cgo, which cannot be
+  # cross-compiled from Linux: without this job nothing would ever compile
+  # internal/webautofill/webautofill_darwin.go or the darwin-only platform
+  # files. macos-14 and later are Apple Silicon runners.
+  macos:
+    name: macOS build
+    timeout-minutes: 25
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # See the frontend job: the lock file needs npm 12 to install.
+      - run: npm install -g npm@12
+
+      # main.go embeds frontend/dist, so it has to exist before any Go step.
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - run: go vet ./...
+      - run: go test ./...
+
+      # Produces the ad-hoc signed .app, which is also the only check that
+      # packaging/darwin/bundle.sh still works.
+      - name: Package the app bundle
+        run: |
+          go build -trimpath -buildvcs=false -tags production -o build/bin/ssh-first .
+          packaging/darwin/bundle.sh 0.0.0-ci build/bin/ssh-first build/bin
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ssh-first-macos-arm64
+          path: build/bin/SSH First.app
+          if-no-files-found: error
+
   frontend:
     name: Frontend checks
     timeout-minutes: 15
@@ -127,4 +175,4 @@ jobs:
         run: appstreamcli validate --no-net packaging/org.wails.ssh_first.metainfo.xml
 
       - name: Check packaging scripts
-        run: shellcheck packaging/stage-tree.sh
+        run: shellcheck packaging/stage-tree.sh packaging/darwin/bundle.sh

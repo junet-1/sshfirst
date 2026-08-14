@@ -55,3 +55,60 @@ tasks:
       - task: linux:build
     cmds:
       - '{{.OUTPUT_DIR}}/{{.APP_NAME}}'
+
+  # macOS links WKWebView through cgo and Objective-C, so these tasks only work
+  # on a Mac with the Xcode command line tools installed — there is no
+  # cross-compilation path from Linux.
+  darwin:build:
+    summary: Builds the production macOS binary (ARCH defaults to the host)
+    deps:
+      - task: frontend:build
+    cmds:
+      - mkdir -p {{.OUTPUT_DIR}}
+      - go build -trimpath -buildvcs=false -tags '{{.BUILD_TAGS}}' -ldflags='-w -s' -o {{.BINARY}} .
+    vars:
+      BUILD_TAGS: 'production{{if .EXTRA_TAGS}},{{.EXTRA_TAGS}}{{end}}'
+      BINARY: '{{.BINARY | default (printf "%s/%s" .OUTPUT_DIR .APP_NAME)}}'
+    env:
+      CGO_ENABLED: '1'
+      GOARCH: '{{.ARCH | default ARCH}}'
+
+  darwin:build:universal:
+    summary: Builds one binary that runs on both Apple Silicon and Intel
+    cmds:
+      - task: darwin:build
+        vars:
+          ARCH: arm64
+          BINARY: '{{.OUTPUT_DIR}}/{{.APP_NAME}}-arm64'
+      - task: darwin:build
+        vars:
+          ARCH: amd64
+          BINARY: '{{.OUTPUT_DIR}}/{{.APP_NAME}}-amd64'
+      - lipo -create -output {{.OUTPUT_DIR}}/{{.APP_NAME}} {{.OUTPUT_DIR}}/{{.APP_NAME}}-arm64 {{.OUTPUT_DIR}}/{{.APP_NAME}}-amd64
+      - rm -f {{.OUTPUT_DIR}}/{{.APP_NAME}}-arm64 {{.OUTPUT_DIR}}/{{.APP_NAME}}-amd64
+
+  darwin:package:
+    summary: Assembles 'build/bin/SSH First.app' (pass VERSION=… for a release)
+    deps:
+      - task: darwin:build
+    cmds:
+      - packaging/darwin/bundle.sh {{.VERSION}} {{.OUTPUT_DIR}}/{{.APP_NAME}} {{.OUTPUT_DIR}}
+    vars:
+      VERSION: '{{.VERSION | default "0.0.0-dev"}}'
+
+  darwin:dmg:
+    summary: Packs the .app into a distributable disk image
+    deps:
+      - task: darwin:package
+    cmds:
+      - rm -f '{{.OUTPUT_DIR}}/SSH-First-{{.VERSION}}.dmg'
+      - hdiutil create -volname 'SSH First' -srcfolder '{{.OUTPUT_DIR}}/SSH First.app' -ov -format ULFO '{{.OUTPUT_DIR}}/SSH-First-{{.VERSION}}.dmg'
+    vars:
+      VERSION: '{{.VERSION | default "0.0.0-dev"}}'
+
+  darwin:run:
+    summary: Runs the built macOS binary
+    deps:
+      - task: darwin:build
+    cmds:
+      - '{{.OUTPUT_DIR}}/{{.APP_NAME}}'

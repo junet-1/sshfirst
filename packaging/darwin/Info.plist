@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Bundle metadata for SSH First.app. @VERSION@ is substituted by
+  packaging/darwin/bundle.sh; everything else is fixed.
+
+  CFBundleIdentifier matches the SingleInstance UniqueID in main.go, and is what
+  macOS keys the app's Keychain entries, notification settings and window state
+  on — changing it orphans all of them.
+-->
+<plist version="1.0">
+  <dict>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleName</key>
+    <string>SSH First</string>
+    <key>CFBundleDisplayName</key>
+    <string>SSH First</string>
+    <key>CFBundleExecutable</key>
+    <string>ssh-first</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.sshfirst.desktop</string>
+    <key>CFBundleVersion</key>
+    <string>@VERSION@</string>
+    <key>CFBundleShortVersionString</key>
+    <string>@VERSION@</string>
+    <key>CFBundleIconFile</key>
+    <string>appicon</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.developer-tools</string>
+    <!-- Go 1.25 does not support anything older than macOS 12. -->
+    <key>LSMinimumSystemVersion</key>
+    <string>12.0</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSHumanReadableCopyright</key>
+    <string>MIT licensed. See LICENSE.</string>
+  </dict>
+</plist>

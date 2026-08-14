@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Entitlements used when the bundle is signed with a real Developer ID and the
+  hardened runtime (see packaging/darwin/bundle.sh). Deliberately minimal:
+
+  - The app is not sandboxed, so outbound SSH connections and reading the user's
+    ~/.ssh need no entitlement.
+  - JavaScript JIT lives in WebKit's own web-content process, which brings its
+    own entitlements; the app process does not need allow-jit.
+  - Keychain access via the default keychain needs none either.
+
+  apple-events is required because notifications are posted through osascript
+  (see internal/platform/notify_darwin.go); without it the hardened runtime
+  blocks the call and notifications silently stop working.
+-->
+<plist version="1.0">
+  <dict>
+    <key>com.apple.security.automation.apple-events</key>
+    <true/>
+  </dict>
+</plist>

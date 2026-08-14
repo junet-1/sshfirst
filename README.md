@@ -4,7 +4,7 @@
 
 # SSH First
 
-**A fast, native SSH, SFTP and admin-panel workspace for Linux.**
+**A fast, native SSH, SFTP and admin-panel workspace for Linux and macOS.**
 
 All your servers in one window: terminals, file transfers, tunnels and web
 control panels, side by side. Local-first, no account, no cloud.
@@ -12,7 +12,7 @@ control panels, side by side. Local-first, no account, no cloud.
 <p>
   <a href="https://github.com/junet-1/sshfirst/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/junet-1/sshfirst/ci.yml?branch=main&style=flat-square&label=CI" alt="CI status"></a>
   <a href="https://github.com/junet-1/sshfirst/releases/latest"><img src="https://img.shields.io/github/v/release/junet-1/sshfirst?style=flat-square&color=2a6bd4" alt="Latest release"></a>
-  <img src="https://img.shields.io/badge/platform-Linux-4a5560?style=flat-square&logo=linux&logoColor=white" alt="Linux">
+  <img src="https://img.shields.io/badge/platform-Linux%20%C2%B7%20macOS-4a5560?style=flat-square&logo=linux&logoColor=white" alt="Linux and macOS">
   <img src="https://img.shields.io/badge/desktop-KDE%20%C2%B7%20GNOME-4a5560?style=flat-square" alt="KDE and GNOME">
   <img src="https://img.shields.io/badge/license-MIT-2f8f5b?style=flat-square" alt="MIT License">
 </p>
@@ -118,19 +118,32 @@ system, not like a website in a window.
 Grab the package for your distribution from the
 [latest release](https://github.com/junet-1/sshfirst/releases/latest).
 
-| Distribution | Package | Install |
+| System | Package | Install |
 | --- | --- | --- |
 | Debian, Ubuntu 24.04+ | `ssh-first_<version>_amd64.deb` | `sudo apt install ./ssh-first_<version>_amd64.deb` |
 | Fedora, RHEL | `ssh-first-<version>-1.*.x86_64.rpm` | `sudo dnf install ./ssh-first-<version>-1.*.x86_64.rpm` |
 | Any other distribution | `SSH_First-<version>-x86_64.flatpak` | `flatpak install --user ./SSH_First-<version>-x86_64.flatpak` |
 | Any (manual) | `ssh-first-<version>-linux-x86_64.tar.gz` | unpack and run `./install.sh` |
 | Arch, Manjaro | build from source, see below | `cd packaging && makepkg -si` |
+| macOS 12+ | `SSH-First-<version>-macos-universal.dmg` | open and drag to Applications |
 
 The `.deb`, `.rpm` and the plain tarball use the GTK 4 and WebKitGTK 6.0 that
 your distribution already ships. The Flatpak brings its own, which makes it the
 right choice on anything older or more exotic.
 
 Every release is checksummed in `SHA256SUMS`.
+
+### macOS
+
+The disk image holds a universal build that runs on Apple Silicon and Intel.
+Releases are not signed with an Apple Developer ID, so Gatekeeper blocks the
+first launch: right-click SSH First in Applications and choose **Open** once,
+then it starts normally from then on.
+
+Passwords go into the login keychain, and SSH First's data lives in
+`~/Library/Application Support/ssh-first`. `rsync` transfers use whichever
+`rsync` is on your `PATH` — macOS ships an old one that only knows per-file
+progress, so `brew install rsync` gives you nicer transfer reporting.
 
 ### Arch Linux and Manjaro
 
@@ -242,6 +255,27 @@ wails3 build
 
 The binary is written to `build/bin/ssh-first`.
 
+### macOS build
+
+macOS links WKWebView and Objective-C through cgo, so a Mac is required — there
+is no cross-compilation path from Linux.
+
+```sh
+xcode-select --install                  # Xcode command line tools
+brew install go node go-task            # toolchain
+task darwin:package                     # → build/bin/SSH First.app
+```
+
+`task darwin:build` produces the bare binary, `task darwin:build:universal` one
+that carries both architectures, and `task darwin:dmg VERSION=x.y.z` a disk
+image. The bundle is assembled by `packaging/darwin/bundle.sh`, which ad-hoc
+signs it — enough to run locally on Apple Silicon. Passing a real identity
+enables the hardened runtime, which is what notarisation needs:
+
+```sh
+SIGN_IDENTITY="Developer ID Application: …" task darwin:package VERSION=x.y.z
+```
+
 ### Legacy GTK3 fallback
 
 Wails v3 uses GTK4 and WebKitGTK 6.0 by default. On systems with only the
@@ -328,6 +362,10 @@ sessions stay alive in the main workspace and the tray.
 SSH First is in active development and used daily on Arch Linux with KDE
 Plasma. The features listed above work today, and issue reports and suggestions
 are welcome.
+
+The macOS port is new: CI compiles and bundles it on every commit, but it has
+had far less hands-on use than the Linux build, so reports of anything that
+feels off there are especially useful.
 
 ## License
 
