@@ -10,6 +10,7 @@ import (
 
 	"ssh-first/internal/secrets"
 	sshpkg "ssh-first/internal/ssh"
+	"ssh-first/internal/storage"
 )
 
 const promptTimeout = 2 * time.Minute
@@ -101,9 +102,37 @@ func (a *App) RespondHostKey(requestID string, accept bool) error {
 	return nil
 }
 
-func (a *App) providePassword(auth resolvedAuth, allowRemember bool) sshpkg.PasswordProvider {
+// providePassword returns the password callback used for every handshake in a
+// connection — the target's and, through the same ConnectConfig, each ProxyJump
+// hop's. The callback is told which user@host is asking, and a stored secret is
+// only released for the identity it was saved under.
+//
+// Without that binding, the target host's keyring entry is offered to every
+// jump host on the way: a bastion that asks for a password receives the
+// credential for the machine behind it. The mirror image is just as bad — a
+// password typed for a hop and remembered would be written under the target's
+// key and sent to the target on the next connect.
+//
+// The secret is bound to the configured auth method as well. A host set to key
+// or agent auth still reaches this callback if the server refuses everything
+// else, and silently replaying a leftover password there lets a server that
+// rejects publickey harvest it. Those hosts prompt instead, and do not offer to
+// remember, since such a secret would never be used automatically anyway.
+// passwordSecretUsable decides whether the keyring entry behind auth may be
+// read for — or written from — the handshake currently asking. See
+// providePassword for why each condition is there.
+func passwordSecretUsable(auth resolvedAuth, allowRemember bool, expectUser, expectHost, user, hostname string) bool {
+	return allowRemember &&
+		user == expectUser &&
+		hostname == expectHost &&
+		auth.authMethod == storage.AuthMethodPassword
+}
+
+func (a *App) providePassword(auth resolvedAuth, allowRemember bool, expectUser, expectHost string) sshpkg.PasswordProvider {
 	return func(user, hostname string) (string, bool, error) {
-		if allowRemember {
+		ownSecret := passwordSecretUsable(auth, allowRemember, expectUser, expectHost, user, hostname)
+
+		if ownSecret {
 			if pw, err := auth.getPassword(); err == nil {
 				return pw, true, nil
 			}
@@ -124,7 +153,7 @@ func (a *App) providePassword(auth resolvedAuth, allowRemember bool) sshpkg.Pass
 			RequestID:     id,
 			User:          user,
 			Hostname:      hostname,
-			AllowRemember: allowRemember,
+			AllowRemember: ownSecret,
 		})
 
 		select {
@@ -132,7 +161,7 @@ func (a *App) providePassword(auth resolvedAuth, allowRemember bool) sshpkg.Pass
 			if !resp.ok {
 				return "", false, nil
 			}
-			if allowRemember && resp.remember {
+			if ownSecret && resp.remember {
 				if err := auth.setPassword(resp.password); err != nil {
 					log.Printf("ssh-first: store password in secret service: %v", err)
 				}

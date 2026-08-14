@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
+	sshpkg "ssh-first/internal/ssh"
 	"ssh-first/internal/transfer"
 )
 
@@ -73,6 +74,9 @@ func (a *App) StartRsync(req TransferRequest) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if err := a.requireVerifiedHostKey(req.HostID); err != nil {
+		return "", err
+	}
 	args, err := transfer.BuildArgs(cfg)
 	if err != nil {
 		return "", err
@@ -113,6 +117,26 @@ func (a *App) CancelRsync(transferID string) error {
 		return nil
 	}
 	handle.cancel()
+	return nil
+}
+
+// requireVerifiedHostKey refuses a transfer to a host whose key has never been
+// approved. rsync spawns its own ssh, which runs with StrictHostKeyChecking=yes
+// and cannot ask the user anything, so it would simply abort with "Host key
+// verification failed" partway into the transfer. Saying it up front, in terms
+// of what the user has to do, is the whole point of the check.
+func (a *App) requireVerifiedHostKey(hostID int64) error {
+	host, err := a.store.GetHost(hostID)
+	if err != nil {
+		return err
+	}
+	known, err := sshpkg.IsHostKnown(a.knownHostsPath, host.Hostname, host.Port)
+	if err != nil {
+		return fmt.Errorf("read known hosts: %w", err)
+	}
+	if !known {
+		return fmt.Errorf("connect to %s once before transferring files, so its host key can be verified", host.Label)
+	}
 	return nil
 }
 

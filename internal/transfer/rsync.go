@@ -120,8 +120,8 @@ func BuildArgs(cfg Config) ([]string, error) {
 		args = append(args, "-h", "--info=progress2")
 	}
 
-	// The remote-shell command. rsync splits this string on spaces itself, so
-	// paths with spaces in identity/known_hosts files are not supported here.
+	// The remote-shell command, assembled as separate tokens and quoted by
+	// joinRemoteShell below.
 	ssh := []string{"ssh"}
 	if cfg.Port != 0 && cfg.Port != 22 {
 		ssh = append(ssh, "-p", strconv.Itoa(cfg.Port))
@@ -138,11 +138,21 @@ func BuildArgs(cfg Config) ([]string, error) {
 		ssh = append(ssh, "-o", "ProxyJump="+cfg.ProxyJump)
 	}
 	if cfg.KnownHostsPath != "" {
-		ssh = append(ssh, "-o", "UserKnownHostsFile="+cfg.KnownHostsPath, "-o", "StrictHostKeyChecking=accept-new")
+		// StrictHostKeyChecking=yes, not accept-new: this is the same
+		// known_hosts the interactive client verifies against, so accepting an
+		// unknown key here would both skip the approval dialog and pin whatever
+		// answered — poisoning every later terminal session to that host. A
+		// transfer to a host that has never been connected fails instead; the
+		// caller checks for that up front and says so (see internal/app).
+		ssh = append(ssh, "-o", "UserKnownHostsFile="+cfg.KnownHostsPath, "-o", "StrictHostKeyChecking=yes")
 	}
 	// Never block on an interactive password/passphrase prompt (there's no tty).
 	ssh = append(ssh, "-o", "BatchMode=yes")
-	args = append(args, "-e", strings.Join(ssh, " "))
+	remoteShell, err := joinRemoteShell(ssh)
+	if err != nil {
+		return nil, err
+	}
+	args = append(args, "-e", remoteShell)
 
 	remote := cfg.Hostname
 	if cfg.User != "" {
@@ -150,12 +160,39 @@ func BuildArgs(cfg Config) ([]string, error) {
 	}
 	remoteSpec := remote + ":" + cfg.RemotePath
 
+	// "--" so a path that happens to start with a dash is a path, not an option
+	// like --rsync-path=<command>.
+	args = append(args, "--")
 	if cfg.Upload {
 		args = append(args, cfg.LocalPath, remoteSpec)
 	} else {
 		args = append(args, remoteSpec, cfg.LocalPath)
 	}
 	return args, nil
+}
+
+// joinRemoteShell renders the ssh invocation for rsync's -e option.
+//
+// rsync splits that string on whitespace, but it does honour double quotes
+// (verified against rsync 3.4.4), and quoting is what makes two things safe:
+// a path containing a space survives as one argument — every macOS data dir is
+// under "Application Support" — and a host field containing a space can no
+// longer smuggle in extra ssh options such as -o ProxyCommand=<command>.
+//
+// A token containing a double quote has no representation here, so it is
+// refused rather than mangled into something with a different meaning.
+func joinRemoteShell(tokens []string) (string, error) {
+	quoted := make([]string, 0, len(tokens))
+	for _, token := range tokens {
+		if strings.Contains(token, `"`) {
+			return "", fmt.Errorf("cannot pass %q to rsync: a double quote in an ssh option is not supported", token)
+		}
+		if strings.ContainsAny(token, " \t\n") {
+			token = `"` + token + `"`
+		}
+		quoted = append(quoted, token)
+	}
+	return strings.Join(quoted, " "), nil
 }
 
 // Run executes rsync with args, streaming combined stdout/stderr to onLine.

@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -40,6 +41,35 @@ type HostKeyDecisionRequest struct {
 // HostKeyApprover blocks until the user has approved or rejected an unknown
 // or changed host key (typically backed by a frontend confirmation dialog).
 type HostKeyApprover func(req HostKeyDecisionRequest) (accept bool, err error)
+
+// IsHostKnown reports whether the managed known_hosts at path already pins a
+// key for hostname:port.
+//
+// That file is only ever filled through the approval dialog, so this answers
+// "has the user verified this host at least once". Transfers need it: rsync
+// runs its own ssh, which cannot show that dialog and must not accept a key on
+// its own — see the StrictHostKeyChecking note in internal/transfer.
+func IsHostKnown(path, hostname string, port int) (bool, error) {
+	normalized := knownhosts.Normalize(net.JoinHostPort(hostname, strconv.Itoa(portOrDefault(port))))
+
+	file, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		fields := strings.Fields(scanner.Text())
+		if len(fields) >= 3 && hostMatchesField(fields[0], normalized) {
+			return true, nil
+		}
+	}
+	return false, scanner.Err()
+}
 
 // ErrHostKeyRejected is returned when the user declines to trust a host key.
 var ErrHostKeyRejected = errors.New("host key rejected by user")
@@ -140,9 +170,14 @@ func persistHostKey(path, normalizedHost string, key ssh.PublicKey) error {
 		line := scanner.Text()
 		fields := strings.Fields(line)
 		if len(fields) >= 3 {
-			hostsField, algo := fields[0], fields[1]
-			if algo == key.Type() && hostMatchesField(hostsField, normalizedHost) {
-				continue // drop the stale entry for this host+algorithm
+			// Every key for this host goes, not just the ones of the same
+			// algorithm. Scoping the removal per algorithm meant that accepting
+			// a changed key of a different type left the previous key trusted
+			// as well: an attacker who got one warning clicked through stayed
+			// pinned afterwards, free to step in again without ever tripping
+			// the dialog a second time. This is what ssh-keygen -R does.
+			if hostMatchesField(fields[0], normalizedHost) {
+				continue
 			}
 		}
 		kept = append(kept, line)

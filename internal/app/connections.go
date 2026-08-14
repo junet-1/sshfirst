@@ -177,16 +177,18 @@ func (a *App) dial(host storage.Host, allowRemember bool) (*sshpkg.Client, error
 	// when the host has one, otherwise from the host's own inline fields.
 	auth := a.resolveAuth(host)
 	return sshpkg.Connect(sshpkg.ConnectConfig{
-		Hostname:           host.Hostname,
-		Port:               host.Port,
-		User:               auth.user,
-		IdentityFiles:      auth.identityFiles,
-		WantPassword:       auth.authMethod == storage.AuthMethodPassword,
-		ForwardAgent:       host.ForwardAgent,
-		ProxyJump:          host.ProxyJump,
-		KnownHostsPath:     a.knownHostsPath,
-		ApproveHostKey:     a.approveHostKey,
-		ProvidePassword:    a.providePassword(auth, allowRemember),
+		Hostname:       host.Hostname,
+		Port:           host.Port,
+		User:           auth.user,
+		IdentityFiles:  auth.identityFiles,
+		WantPassword:   auth.authMethod == storage.AuthMethodPassword,
+		ForwardAgent:   host.ForwardAgent,
+		ProxyJump:      host.ProxyJump,
+		KnownHostsPath: a.knownHostsPath,
+		ApproveHostKey: a.approveHostKey,
+		// The expected identity: any other user@host reaching the callback is a
+		// ProxyJump hop, which must not receive this host's stored password.
+		ProvidePassword:    a.providePassword(auth, allowRemember, auth.user, host.Hostname),
 		ProvidePassphrase:  a.providePassphrase(),
 		ProvideInteractive: a.provideKeyboardInteractive(),
 	})

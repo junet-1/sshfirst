@@ -6,6 +6,7 @@ import { t } from '../services/i18n'
 import type { ConnectionInfo, ConnectionStatus, StatusEvent, TabKind } from '../types/connection'
 import type { Host } from '../types/host'
 import { reorderTabIds, type TabDropPosition } from '../lib/tabOrder'
+import { normalizePanelUrl } from '../lib/panelUrl'
 
 export interface TabViewModel {
   tabId: string
@@ -463,13 +464,7 @@ export function openNewTab(): string {
   return tabId
 }
 
-/** Normalizes a user-entered control-panel URL: trims it and, when no scheme is
- * present, assumes https so a bare "panel.example.com:8006" still resolves. */
-export function normalizePanelUrl(raw: string): string {
-  const trimmed = raw.trim()
-  if (!trimmed) return ''
-  return /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
-}
+export { normalizePanelUrl }
 
 /** Opens a host by its protocol: a web host becomes an embedded browser tab, an
  * SSH/SFTP host opens (or refocuses) its transport. The single entry point every

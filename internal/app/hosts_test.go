@@ -66,3 +66,45 @@ func TestNormalizeHostInputWebStripsSSHFields(t *testing.T) {
 		t.Errorf("web autofill identity not retained: %+v", out)
 	}
 }
+
+func TestValidatePanelURL(t *testing.T) {
+	accepted := []string{
+		"https://proxmox.example.com:8006/",
+		"http://192.168.1.1/",
+		"https://panel.example.com/path?a=1",
+	}
+	for _, raw := range accepted {
+		if err := validatePanelURL(raw); err != nil {
+			t.Errorf("validatePanelURL(%q) = %v, want nil", raw, err)
+		}
+	}
+
+	// A javascript: URL reaching an <iframe src> would run in the app shell's
+	// origin, where every binding — including the stored passwords — is exposed.
+	rejected := []string{
+		"javascript://x%0aalert(1)",
+		"data:text/html,<script>alert(1)</script>",
+		"file:///etc/passwd",
+		"wails://wails.localhost/wails/runtime",
+		"https://panel.corp.example@evil.tld/",
+		"https://user:pw@evil.tld/",
+		"not a url at all",
+		"https://",
+	}
+	for _, raw := range rejected {
+		if err := validatePanelURL(raw); err == nil {
+			t.Errorf("validatePanelURL(%q) = nil, want an error", raw)
+		}
+	}
+}
+
+func TestValidateHostInputRejectsHostilePanelURL(t *testing.T) {
+	input := storage.HostInput{
+		Label:           "panel",
+		Protocol:        storage.HostProtocolWeb,
+		ControlPanelURL: "javascript://x%0afetch('https://evil.tld')",
+	}
+	if err := validateHostInput(input); err == nil {
+		t.Fatal("validateHostInput accepted a javascript: control panel URL")
+	}
+}

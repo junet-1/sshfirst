@@ -3,6 +3,7 @@ package app
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 
@@ -84,12 +85,52 @@ func validateHostInput(input storage.HostInput) error {
 		if input.Hostname == "" {
 			return fmt.Errorf("hostname is required")
 		}
+		// Both fields end up inside rsync's remote-shell string, which rsync
+		// splits on whitespace. The transfer layer quotes them, so this is the
+		// second line of defence rather than the only one — but a hostname or
+		// jump spec with whitespace in it is malformed anyway, and refusing it
+		// here keeps the value from ever reaching the database.
+		if strings.ContainsAny(input.Hostname, " \t\n") {
+			return fmt.Errorf("hostname must not contain spaces")
+		}
+		if strings.ContainsAny(input.ProxyJump, " \t\n") {
+			return fmt.Errorf("proxy jump must not contain spaces")
+		}
 	case storage.HostProtocolWeb:
 		if strings.TrimSpace(input.ControlPanelURL) == "" {
 			return fmt.Errorf("a control panel URL is required for a web host")
 		}
+		if err := validatePanelURL(input.ControlPanelURL); err != nil {
+			return err
+		}
 	default:
 		return fmt.Errorf("unsupported host protocol %q", input.Protocol)
+	}
+	return nil
+}
+
+// validatePanelURL keeps anything but a plain http(s) address out of a stored
+// web host. The URL is rendered as an <iframe src> in the app shell, and a
+// javascript: URL there executes in the shell's own origin — the one holding
+// the Wails bindings that read stored passwords and write to live SSH sessions.
+// Embedded credentials are refused as well: they make the origin the password
+// is posted to differ from the host the address appears to name.
+//
+// The frontend applies the same rule before saving (see lib/panelUrl.ts); this
+// is the authoritative copy, so no other write path can bypass it.
+func validatePanelURL(raw string) error {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return fmt.Errorf("control panel URL is not a valid URL")
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return fmt.Errorf("control panel URL must use http or https")
+	}
+	if parsed.Host == "" {
+		return fmt.Errorf("control panel URL needs a hostname")
+	}
+	if parsed.User != nil {
+		return fmt.Errorf("control panel URL must not contain a username or password")
 	}
 	return nil
 }

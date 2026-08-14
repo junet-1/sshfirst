@@ -139,3 +139,68 @@ func TestVersionSupportsInfoProgress(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildArgs_RemoteShellQuoting(t *testing.T) {
+	// The macOS data directory lives under "Application Support"; unquoted, the
+	// space would split the option into two ssh arguments and silently point
+	// ssh at a different known_hosts file.
+	args, err := BuildArgs(Config{
+		Hostname:       "h",
+		LocalPath:      "/x",
+		RemotePath:     "/y",
+		KnownHostsPath: "/Users/u/Library/Application Support/ssh-first/known_hosts",
+	})
+	if err != nil {
+		t.Fatalf("BuildArgs: %v", err)
+	}
+	e := sshCommand(t, args)
+	if !strings.Contains(e, `"UserKnownHostsFile=/Users/u/Library/Application Support/ssh-first/known_hosts"`) {
+		t.Errorf("known_hosts option is not quoted: %q", e)
+	}
+	if !strings.Contains(e, "StrictHostKeyChecking=yes") {
+		t.Errorf("expected strict host key checking, got %q", e)
+	}
+	if strings.Contains(e, "accept-new") {
+		t.Errorf("rsync must not silently pin unknown host keys: %q", e)
+	}
+}
+
+func TestBuildArgs_ProxyJumpCannotInjectSSHOptions(t *testing.T) {
+	// rsync re-splits the -e string, so a space in a host field would otherwise
+	// become an extra ssh option — ProxyCommand being the interesting one.
+	args, err := BuildArgs(Config{
+		Hostname:   "h",
+		LocalPath:  "/x",
+		RemotePath: "/y",
+		ProxyJump:  "bastion -o ProxyCommand=/tmp/payload",
+	})
+	if err != nil {
+		t.Fatalf("BuildArgs: %v", err)
+	}
+	e := sshCommand(t, args)
+	if !strings.Contains(e, `"ProxyJump=bastion -o ProxyCommand=/tmp/payload"`) {
+		t.Errorf("proxy jump value is not quoted as a single argument: %q", e)
+	}
+}
+
+func TestBuildArgs_RejectsQuoteInRemoteShellToken(t *testing.T) {
+	_, err := BuildArgs(Config{
+		Hostname:   "h",
+		LocalPath:  "/x",
+		RemotePath: "/y",
+		ProxyJump:  `bastion" -o ProxyCommand=/tmp/payload`,
+	})
+	if err == nil {
+		t.Fatal("BuildArgs accepted a double quote in an ssh option")
+	}
+}
+
+func TestBuildArgs_SeparatesPathsFromOptions(t *testing.T) {
+	args, err := BuildArgs(Config{Hostname: "h", LocalPath: "--rsync-path=/tmp/x", RemotePath: "/y", Upload: true})
+	if err != nil {
+		t.Fatalf("BuildArgs: %v", err)
+	}
+	if args[len(args)-3] != "--" {
+		t.Errorf("expected -- before the path operands, got %v", args[len(args)-3:])
+	}
+}

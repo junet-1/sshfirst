@@ -357,6 +357,17 @@ jobs:
     runs-on: macos-14
     env:
       VERSION: ${{ needs.version.outputs.version }}
+      # Job level, not step level: a step's own env: block is not yet in scope
+      # when that step's if: is evaluated, so guarding on it there leaves the
+      # signing and notarisation steps permanently skipped — and releases
+      # silently ad-hoc signed even once the secrets exist. The secrets context
+      # is not available in a step if: at all.
+      MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+      MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+      MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
 
@@ -399,9 +410,6 @@ jobs:
       # configured. Everything below degrades to an ad-hoc signature otherwise.
       - name: Import signing certificate
         if: ${{ env.MACOS_CERTIFICATE != '' }}
-        env:
-          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
-          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
         run: |
           set -euo pipefail
           echo "$MACOS_CERTIFICATE" | base64 --decode > certificate.p12
@@ -415,20 +423,14 @@ jobs:
           rm -f certificate.p12
 
       - name: Assemble app bundle
-        env:
-          SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
         run: |
           set -euo pipefail
           # bundle.sh signs ad-hoc when the identity is "-".
-          export SIGN_IDENTITY="${SIGN_IDENTITY:--}"
+          export SIGN_IDENTITY="${MACOS_SIGN_IDENTITY:--}"
           packaging/darwin/bundle.sh "$VERSION" build/bin/ssh-first dist
 
       - name: Notarise
         if: ${{ env.APPLE_ID != '' }}
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
         run: |
           set -euo pipefail
           # notarytool takes archives, not raw bundles.

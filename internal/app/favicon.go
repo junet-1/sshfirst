@@ -93,7 +93,20 @@ func fetchFavicon(origin string) string {
 	if err != nil {
 		return ""
 	}
-	return fetchImageAsDataURL(resp.Request.URL.ResolveReference(ref).String())
+	iconURL := resp.Request.URL.ResolveReference(ref)
+	// The href is remote input: it comes out of the panel's own HTML. Without
+	// this check a panel could aim it at any address the app can reach —
+	// 127.0.0.1, or a device on the user's LAN — and use the icon fetch as a
+	// probe from inside that network. An icon not served by the panel itself is
+	// not worth that.
+	if !sameOrigin(iconURL, resp.Request.URL) {
+		return ""
+	}
+	return fetchImageAsDataURL(iconURL.String())
+}
+
+func sameOrigin(a, b *url.URL) bool {
+	return a.Scheme == b.Scheme && a.Host == b.Host
 }
 
 // fetchImageAsDataURL downloads a single image URL and returns it as a data:

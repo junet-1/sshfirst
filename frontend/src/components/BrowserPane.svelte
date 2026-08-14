@@ -3,6 +3,7 @@
   import { t } from '../services/i18n'
   import { backend } from '../services/backend'
   import { ensureFavicon, faviconOrigin, favicons } from '../stores/favicons'
+  import { mayAutofill, normalizePanelUrl } from '../lib/panelUrl'
   import type { Rect } from '../lib/layoutTree'
   import { onMount } from 'svelte'
 
@@ -19,6 +20,13 @@
   let credentials: { email: string; password: string } | null = null
   let credentialsHostId: number | undefined
   let autofillComplete = false
+
+  // Defence in depth. Every caller already routes through normalizePanelUrl,
+  // but this is the sink a hostile scheme would actually execute in, so the URL
+  // is vetted again immediately before it becomes the frame's src. about:blank
+  // rather than '' for a rejected URL: an empty src resolves to the app's own
+  // document, which would load the shell inside its own iframe.
+  $: frameUrl = normalizePanelUrl(url) || 'about:blank'
 
   // The panel's favicon via the shared backend cache, globe as fallback.
   $: void ensureFavicon(url)
@@ -37,7 +45,7 @@
     credentials = null
     credentialsHostId = undefined
     clearAutofillTimers()
-    if (iframeEl) iframeEl.src = url
+    if (iframeEl) iframeEl.src = frameUrl
   }
 
   function clearAutofillTimers(): void {
@@ -65,6 +73,10 @@
   async function autofill(): Promise<void> {
     clearAutofillTimers()
     if (autofillComplete || !iframeEl?.contentWindow || !resourceHostId) return
+    // A plaintext panel on a routable address would hand the password to
+    // anyone on the path, with no user action beyond opening the tab. Homelab
+    // hardware on the local network is exempt — see lib/panelUrl.
+    if (!mayAutofill(url)) return
     try {
       const targetOrigin = new URL(url).origin
       const saved = await loadAutofillCredentials()
@@ -104,7 +116,9 @@
   })
 
   function openExternally(): void {
-    backend.openExternalURL(url)
+    // The vetted URL, so a rejected scheme is not handed to the system browser
+    // either.
+    backend.openExternalURL(frameUrl)
   }
 </script>
 
@@ -135,7 +149,7 @@
          policy), so the panel is isolated from the SSH backend by construction. -->
     <iframe
       bind:this={iframeEl}
-      src={url}
+      src={frameUrl}
       title={$t('browser.frameTitle')}
       data-tab-id={tabId}
       on:load={autofill}
