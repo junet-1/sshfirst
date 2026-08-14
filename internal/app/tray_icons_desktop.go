@@ -1,4 +1,4 @@
-//go:build linux
+//go:build linux || darwin
 
 package app
 
@@ -14,6 +14,9 @@ import (
 var (
 	traySSHIcon  = renderTrayProtocolIcon(storage.HostProtocolSSH)
 	traySFTPIcon = renderTrayProtocolIcon(storage.HostProtocolSFTP)
+
+	// trayTemplateIcon is the status-item image used on macOS.
+	trayTemplateIcon = renderTrayTemplateIcon()
 )
 
 func trayProtocolIcon(protocol storage.HostProtocol) []byte {
@@ -23,9 +26,34 @@ func trayProtocolIcon(protocol storage.HostProtocol) []byte {
 	return traySSHIcon
 }
 
+// renderTrayTemplateIcon draws the lock silhouette as a macOS template image:
+// AppKit ignores the colour channels and derives the status-item glyph from the
+// alpha mask alone, so it stays legible on light and dark menu bars and follows
+// the highlight when the menu is open. 22×22 is the menu bar's natural size.
+func renderTrayTemplateIcon() []byte {
+	img := image.NewNRGBA(image.Rect(0, 0, 22, 22))
+	solid := color.NRGBA{A: 255}
+	faint := color.NRGBA{A: 90}
+
+	// Shackle.
+	fillTrayRect(img, 7, 3, 15, 5, solid)
+	fillTrayRect(img, 5, 5, 8, 11, solid)
+	fillTrayRect(img, 14, 5, 17, 11, solid)
+	fillTrayRect(img, 8, 5, 14, 7, faint)
+
+	// Lock body with a cut-out keyhole (transparent, so the bar shows through).
+	fillTrayRect(img, 3, 10, 19, 20, solid)
+	fillTrayRect(img, 10, 13, 12, 18, color.NRGBA{})
+
+	var data bytes.Buffer
+	_ = png.Encode(&data, img)
+	return data.Bytes()
+}
+
 // renderTrayProtocolIcon produces compact PNGs for DBusMenu's icon-data
-// property. Keeping them in code makes the tray independent of whichever icon
-// theme happens to be installed on the desktop.
+// property (and for NSMenuItem images on macOS). Keeping them in code makes the
+// tray independent of whichever icon theme happens to be installed on the
+// desktop.
 func renderTrayProtocolIcon(protocol storage.HostProtocol) []byte {
 	img := image.NewNRGBA(image.Rect(0, 0, 24, 24))
 	if protocol == storage.HostProtocolSFTP {

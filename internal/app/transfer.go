@@ -138,6 +138,7 @@ func (a *App) rsyncConfig(req TransferRequest) (transfer.Config, error) {
 		Compress:       req.Compress,
 		Delete:         req.Delete,
 		DryRun:         req.DryRun,
+		LegacyProgress: !transfer.SupportsInfoProgress(),
 	}, nil
 }
 

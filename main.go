@@ -42,24 +42,9 @@ func shouldStartHidden(args []string) bool {
 }
 
 func main() {
-	// Wayland forbids a client from setting its own toplevel position, so the
-	// window-geometry restore below would be a no-op there and the compositor
-	// would place windows wherever it likes. Running under XWayland (like most
-	// browsers do) lets us restore the exact last position ourselves. Only
-	// forced when the user has not picked a backend explicitly.
-	if os.Getenv("GDK_BACKEND") == "" {
-		_ = os.Setenv("GDK_BACKEND", "x11")
-	}
-
-	// WebKitGTK's JavaScriptCore JIT crashes the web-content process (heap
-	// corruption / SIGABRT) after a few minutes of rendering some panel SPAs.
-	// Disabling the JIT trades a little JS throughput — irrelevant for admin
-	// panels — for stability. Set before any WebKit init so the web process
-	// inherits it; only forced when the user hasn't chosen, so JSC_useJIT=1
-	// can re-enable it for testing.
-	if os.Getenv("JSC_useJIT") == "" {
-		_ = os.Setenv("JSC_useJIT", "0")
-	}
+	// Webview backend tweaks that have to be in place before any window is
+	// created — see platform_linux.go for what this does on GTK/WebKitGTK.
+	applyPlatformEnv()
 
 	migrations, err := fs.Sub(migrationsDir, "migrations")
 	if err != nil {
@@ -82,6 +67,13 @@ func main() {
 		Linux: application.LinuxOptions{
 			ProgramName:                   "ssh-first",
 			DisableQuitOnLastWindowClosed: true,
+		},
+		// The main window is hidden rather than closed when the tray is
+		// enabled, and tool windows come and go, so the app must outlive its
+		// last window on macOS too — the counterpart to the Linux option above.
+		Mac: application.MacOptions{
+			ActivationPolicy: application.ActivationPolicyRegular,
+			ApplicationShouldTerminateAfterLastWindowClosed: false,
 		},
 		SingleInstance: &application.SingleInstanceOptions{
 			UniqueID:      "com.sshfirst.desktop",
@@ -107,12 +99,8 @@ func main() {
 		MinHeight:        600,
 		URL:              "/",
 		BackgroundColour: application.NewRGB(30, 32, 34),
-		Linux: application.LinuxWindow{
-			Icon:      appIcon,
-			Menu:      mainMenu,
-			MenuStyle: application.LinuxMenuStyleMenuBar,
-		},
 	}
+	applyPlatformWindowOptions(desktop, &mainOptions, mainMenu, appIcon)
 	backend.RestoreWindowGeometry(&mainOptions, "main", true)
 	mainWindow = desktop.Window.NewWithOptions(mainOptions)
 	backend.SetMainWindow(mainWindow)

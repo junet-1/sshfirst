@@ -1,5 +1,7 @@
 import { derived, writable } from 'svelte/store'
 
+import { isMac, shortcutLabel } from './platform'
+
 export type Locale = 'en' | 'de'
 
 type Dictionary = Record<string, string>
@@ -864,7 +866,21 @@ const de: Dictionary = {
   'about.close': 'Schließen'
 }
 
-const dictionaries: Record<Locale, Dictionary> = { en, de }
+// Shortcut hints are written Ctrl-first in the dictionaries and rewritten once,
+// at load, into the notation of whichever platform is running — see
+// services/platform.ts. Doing it here keeps one spelling per string instead of
+// a platform variant in every language.
+function localizeShortcuts(dictionary: Dictionary): Dictionary {
+  if (!isMac) return dictionary
+  return Object.fromEntries(
+    Object.entries(dictionary).map(([key, value]) => [key, shortcutLabel(value)]),
+  )
+}
+
+const dictionaries: Record<Locale, Dictionary> = {
+  en: localizeShortcuts(en),
+  de: localizeShortcuts(de),
+}
 
 function detectDefaultLocale(): Locale {
   const nav = typeof navigator !== 'undefined' ? navigator.language : 'en'

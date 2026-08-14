@@ -3,6 +3,7 @@
   import { tick } from 'svelte'
   import Icon from './Icon.svelte'
   import { t } from '../services/i18n'
+  import { shortcutLabel } from '../services/platform'
   import {
     aboutOpen,
     commandPaletteOpen,
@@ -107,7 +108,7 @@
       label: $t('quickConnect.title'),
       hint: $t('quickConnect.body'),
       keywords: 'new tab session connect ssh',
-      shortcut: 'Ctrl T',
+      shortcut: shortcutLabel('Ctrl T'),
       run: openNewTab
     },
     {
@@ -117,7 +118,7 @@
       label: $t('menu.file.newHost'),
       hint: $t('commandPalette.hint.newHost'),
       keywords: 'add create server ssh sftp',
-      shortcut: 'Ctrl N',
+      shortcut: shortcutLabel('Ctrl N'),
       run: () => hostDialog.set({ open: true, editingId: null })
     },
     {
@@ -134,7 +135,7 @@
       icon: 'settings',
       label: $t('menu.file.settings'),
       keywords: 'preferences theme language font',
-      shortcut: 'Ctrl ,',
+      shortcut: shortcutLabel('Ctrl ,'),
       run: () => settingsOpen.set(true)
     },
     {
@@ -188,7 +189,7 @@
             label: $t('menu.session.closeTab'),
             hint: activeTab.title,
             keywords: 'close terminal session',
-            shortcut: 'Ctrl W',
+            shortcut: shortcutLabel('Ctrl W'),
             run: () => closeTab(activeTab.tabId)
           }
         ]

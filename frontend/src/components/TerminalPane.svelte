@@ -7,6 +7,7 @@
   import { WebLinksAddon } from '@xterm/addon-web-links'
   import '@xterm/xterm/css/xterm.css'
   import { backend, on } from '../services/backend'
+  import { isMac } from '../services/platform'
   import type { TerminalClosedEvent, TerminalDataEvent } from '../types/connection'
   import { activeConnectionId, activeTabId, markTabActivity, tabs, terminalSizes } from '../stores/connections'
   import { reconnectStates } from '../stores/reconnect'
@@ -351,9 +352,30 @@
       // Ctrl/Cmd+Shift+V. Paste deliberately stays a native browser action:
       // WebKitGTK exposes external clipboard contents reliably on the paste
       // event, but not consistently through navigator.clipboard.readText().
+      //
+      // macOS additionally gets plain ⌘C/⌘V, which is what every terminal
+      // there uses: Command is not a modifier the shell can see, so unlike
+      // Ctrl+C it is free to mean copy.
+      //
+      // The Edit menu's standard Copy/Paste roles claim those two shortcuts
+      // first, but AppKit only lets an *enabled* menu item swallow a key
+      // equivalent, and it asks the web view whether it can copy. A terminal
+      // selection is drawn by xterm rather than being a DOM selection, so the
+      // answer is no and the event arrives here. Paste is the other way round —
+      // the hidden textarea is editable, so WebKit handles ⌘V itself and the
+      // branch below is only a fallback.
       term.attachCustomKeyEventHandler((e) => {
         if (e.type !== 'keydown') return true
         const mod = e.ctrlKey || e.metaKey
+        const command = isMac && e.metaKey && !e.ctrlKey && !e.shiftKey
+        if (command && e.key.toLowerCase() === 'c' && term?.hasSelection()) {
+          e.preventDefault()
+          copySelection()
+          return false
+        }
+        if (command && e.key.toLowerCase() === 'v') {
+          return false
+        }
         if (mod && e.shiftKey && e.key.toLowerCase() === 'c') {
           e.preventDefault()
           copySelection()

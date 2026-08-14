@@ -96,3 +96,46 @@ func sshCommand(t *testing.T, args []string) string {
 	t.Fatalf("no -e flag in args: %v", args)
 	return ""
 }
+
+func TestBuildArgs_LegacyProgress(t *testing.T) {
+	modern, err := BuildArgs(Config{Hostname: "h", LocalPath: "/x", RemotePath: "/y"})
+	if err != nil {
+		t.Fatalf("BuildArgs: %v", err)
+	}
+	if !slices.Contains(modern, "--info=progress2") {
+		t.Errorf("expected --info=progress2 by default, got %v", modern)
+	}
+
+	legacy, err := BuildArgs(Config{Hostname: "h", LocalPath: "/x", RemotePath: "/y", LegacyProgress: true})
+	if err != nil {
+		t.Fatalf("BuildArgs: %v", err)
+	}
+	if slices.Contains(legacy, "--info=progress2") || slices.Contains(legacy, "-h") {
+		t.Errorf("legacy rsync must not be given 3.1+ flags, got %v", legacy)
+	}
+	if !slices.Contains(legacy, "--progress") {
+		t.Errorf("expected --progress as the legacy fallback, got %v", legacy)
+	}
+}
+
+func TestVersionSupportsInfoProgress(t *testing.T) {
+	cases := []struct {
+		name   string
+		output string
+		want   bool
+	}{
+		{"rsync 3.4", "rsync  version 3.4.1  protocol version 32\nCopyright…", true},
+		{"rsync 3.1", "rsync  version 3.1.0  protocol version 31", true},
+		{"rsync 3.0 (macOS-era)", "rsync  version 3.0.9  protocol version 30", false},
+		{"rsync 2.6.9 (macOS)", "rsync  version 2.6.9  protocol version 29", false},
+		{"openrsync (macOS 15+)", "openrsync: protocol version 27", false},
+		{"unparseable", "some other tool", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := versionSupportsInfoProgress(tc.output); got != tc.want {
+				t.Errorf("versionSupportsInfoProgress(%q) = %v, want %v", tc.output, got, tc.want)
+			}
+		})
+	}
+}

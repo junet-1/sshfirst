@@ -13,15 +13,16 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // Config describes a single rsync run.
 type Config struct {
-	User          string
-	Hostname      string
-	Port          int
-	IdentityFiles []string
-	ProxyJump     string
+	User           string
+	Hostname       string
+	Port           int
+	IdentityFiles  []string
+	ProxyJump      string
 	KnownHostsPath string
 
 	LocalPath  string
@@ -32,10 +33,58 @@ type Config struct {
 	Compress bool
 	Delete   bool // --delete (mirror; removes extraneous files on the destination)
 	DryRun   bool
+
+	// LegacyProgress selects flags an rsync without --info=progress2
+	// understands. See SupportsInfoProgress, which is what callers should use
+	// to fill this in.
+	LegacyProgress bool
 }
 
 // ErrRsyncMissing is returned when the rsync binary isn't on PATH.
 var ErrRsyncMissing = fmt.Errorf("rsync is not installed or not on PATH")
+
+var (
+	infoProgressOnce sync.Once
+	infoProgress     bool
+)
+
+// SupportsInfoProgress reports whether the rsync on PATH understands
+// --info=progress2, which arrived in rsync 3.1 (2013). Every current Linux
+// distribution ships a newer one, but macOS still bundles rsync 2.6.9 — and
+// since macOS 15 the openrsync rewrite — so the flag has to be probed instead
+// of assumed. The answer is cached: rsync does not change under a running app.
+func SupportsInfoProgress() bool {
+	infoProgressOnce.Do(func() {
+		out, err := exec.Command("rsync", "--version").Output()
+		infoProgress = err == nil && versionSupportsInfoProgress(string(out))
+	})
+	return infoProgress
+}
+
+// versionSupportsInfoProgress parses the first line of `rsync --version`, which
+// reads "rsync  version 3.4.1  protocol version 32" for rsync proper and starts
+// with "openrsync" for the BSD/macOS rewrite.
+func versionSupportsInfoProgress(output string) bool {
+	line, _, _ := strings.Cut(output, "\n")
+	if strings.Contains(strings.ToLower(line), "openrsync") {
+		return false
+	}
+	_, rest, found := strings.Cut(line, "version ")
+	if !found {
+		return false
+	}
+	version, _, _ := strings.Cut(rest, " ")
+	major, minor, _ := strings.Cut(version, ".")
+	majorNum, err := strconv.Atoi(major)
+	if err != nil {
+		return false
+	}
+	if majorNum != 3 {
+		return majorNum > 3
+	}
+	minorNum, err := strconv.Atoi(strings.SplitN(minor, ".", 2)[0])
+	return err == nil && minorNum >= 1
+}
 
 // BuildArgs assembles the rsync argument list (excluding the "rsync" program
 // name itself) for cfg.
@@ -62,8 +111,14 @@ func BuildArgs(cfg Config) ([]string, error) {
 	if cfg.DryRun {
 		args = append(args, "-n")
 	}
-	// Human-readable sizes and a single overall progress line (rsync 3.1+).
-	args = append(args, "-h", "--info=progress2")
+	if cfg.LegacyProgress {
+		// --progress is per-file rather than one overall line, but it is all
+		// rsync 2.6.9 and openrsync (both shipped by macOS) understand.
+		args = append(args, "--progress")
+	} else {
+		// Human-readable sizes and a single overall progress line (rsync 3.1+).
+		args = append(args, "-h", "--info=progress2")
+	}
 
 	// The remote-shell command. rsync splits this string on spaces itself, so
 	// paths with spaces in identity/known_hosts files are not supported here.

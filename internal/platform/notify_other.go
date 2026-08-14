@@ -1,13 +1,13 @@
-//go:build !linux
+//go:build !linux && !darwin
 
 package platform
 
 // noopNotifier is the placeholder for platforms without a native
-// notification integration yet (Windows/macOS support is planned but not
+// notification integration yet (Windows support is planned but not
 // implemented).
 type noopNotifier struct{}
 
-// NewNotifier returns a no-op notifier on non-Linux platforms.
+// NewNotifier returns a no-op notifier on platforms without an integration.
 func NewNotifier(appName string) Notifier {
 	return &noopNotifier{}
 }

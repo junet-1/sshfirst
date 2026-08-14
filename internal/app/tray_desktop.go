@@ -1,8 +1,9 @@
-//go:build linux
+//go:build linux || darwin
 
 package app
 
 import (
+	"runtime"
 	"sort"
 	"sync"
 
@@ -29,9 +30,15 @@ func (t *wailsTray) Start() bool {
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	t.tray = t.app.ui.SystemTray.New().
-		SetIcon(t.icon).
-		OnClick(t.app.ShowMainWindow)
+	t.tray = t.app.ui.SystemTray.New()
+	if runtime.GOOS == "darwin" {
+		// The menu bar wants a template image: the full-colour application icon
+		// would be flattened into an unreadable blob at status-item size.
+		t.tray.SetTemplateIcon(trayTemplateIcon)
+	} else {
+		t.tray.SetIcon(t.icon)
+	}
+	t.tray.OnClick(t.app.ShowMainWindow)
 	t.tray.SetTooltip("SSH First")
 	t.rebuildMenuLocked()
 	return true

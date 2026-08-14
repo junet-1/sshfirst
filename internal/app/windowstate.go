@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -72,8 +73,9 @@ func (gs *geometryStore) put(key string, g windowGeometry) {
 // window) — tool windows size themselves to their content (see Modal.svelte),
 // so restoring a stale height would fight the content-fit.
 //
-// Positioning only takes effect under X11/XWayland (see the GDK_BACKEND note in
-// main.go); on native Wayland the compositor owns placement and this is inert.
+// On Linux, positioning only takes effect under X11/XWayland (see the
+// GDK_BACKEND note in platform_linux.go); on native Wayland the compositor owns
+// placement and this is inert.
 //
 //wails:ignore
 func (a *App) RestoreWindowGeometry(opts *application.WebviewWindowOptions, key string, trackSize bool) {
@@ -81,13 +83,23 @@ func (a *App) RestoreWindowGeometry(opts *application.WebviewWindowOptions, key 
 	if !ok {
 		return
 	}
-	// Wails only honours an absolute start position when a Screen is provided
-	// (it computes WorkArea.X + opts.X). A sentinel screen anchored at the
-	// origin makes opts.X/Y absolute, so the window lands on the same physical
-	// monitor. Without this, WindowXY is applied relative to whichever monitor
-	// the window is created on and always reopens on the primary.
 	opts.InitialPosition = application.WindowXY
-	opts.Screen = &application.Screen{WorkArea: application.Rect{X: 0, Y: 0}}
+	if runtime.GOOS != "darwin" {
+		// Wails only honours an absolute start position when a Screen is
+		// provided (it computes WorkArea.X + opts.X). A sentinel screen
+		// anchored at the origin makes opts.X/Y absolute, so the window lands
+		// on the same physical monitor. Without this, WindowXY is applied
+		// relative to whichever monitor the window is created on and always
+		// reopens on the primary.
+		//
+		// macOS must not take this path: passing a Screen switches Wails to a
+		// setter that measures from the screen's *visible* frame and divides by
+		// the backing scale factor, which is not the inverse of the getter
+		// TrackWindowGeometry saves with — a restored window would end up at
+		// half its coordinates on a Retina display. Without a Screen, macOS
+		// uses the exact inverse and the round trip is faithful.
+		opts.Screen = &application.Screen{WorkArea: application.Rect{X: 0, Y: 0}}
+	}
 	opts.X = g.X
 	opts.Y = g.Y
 	if trackSize && g.Width > 0 && g.Height > 0 {
