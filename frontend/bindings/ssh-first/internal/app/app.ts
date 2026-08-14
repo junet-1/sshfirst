@@ -21,6 +21,14 @@ import * as storage$0 from "../storage/models.js";
 // @ts-ignore: Unused imports
 import * as $models from "./models.js";
 
+/**
+ * AcknowledgeTerminalOutput releases the next bounded batch only after xterm
+ * has parsed the current one. Stale generations/sequences are ignored.
+ */
+export function AcknowledgeTerminalOutput(tabID: string, sessionGeneration: string, sequence: number): $CancellablePromise<void> {
+    return $Call.ByID(505654484, tabID, sessionGeneration, sequence);
+}
+
 export function CancelKeyboardInteractivePrompt(requestID: string): $CancellablePromise<void> {
     return $Call.ByID(1764275178, requestID);
 }
@@ -381,6 +389,14 @@ export function OpenToolWindow(kind: string, entityID: number, parentID: number)
     return $Call.ByID(561227557, kind, entityID, parentID);
 }
 
+/**
+ * PauseTerminalOutput stops delivery while a terminal component is unmounted.
+ * The next StartTerminalOutput resumes with the unacknowledged batch.
+ */
+export function PauseTerminalOutput(tabID: string): $CancellablePromise<void> {
+    return $Call.ByID(883928990, tabID);
+}
+
 export function PickDirectory(): $CancellablePromise<string> {
     return $Call.ByID(439687297);
 }
@@ -429,6 +445,23 @@ export function Reconnect(connectionID: string): $CancellablePromise<$models.Con
  */
 export function RenameFolder(id: number, name: string): $CancellablePromise<void> {
     return $Call.ByID(3339155165, id, name);
+}
+
+/**
+ * ReorderFolder persists a folder's exact position among siblings while also
+ * supporting re-parenting. A nil targetFolderID appends under parentID.
+ */
+export function ReorderFolder(folderID: number, parentID: number | null, targetFolderID: number | null, before: boolean): $CancellablePromise<void> {
+    return $Call.ByID(2122284046, folderID, parentID, targetFolderID, before);
+}
+
+/**
+ * ReorderHost persists a host's exact position among the destination folder's
+ * children. A nil targetHostID appends; otherwise before selects which side of
+ * the target row receives the moved host.
+ */
+export function ReorderHost(hostID: number, folderID: number | null, targetHostID: number | null, before: boolean): $CancellablePromise<void> {
+    return $Call.ByID(1516458056, hostID, folderID, targetHostID, before);
 }
 
 /**
@@ -518,6 +551,15 @@ export function StartForward(connectionID: string, ruleID: number): $Cancellable
  */
 export function StartRsync(req: $models.TransferRequest): $CancellablePromise<string> {
     return $Call.ByID(2221655466, req);
+}
+
+/**
+ * StartTerminalOutput is called after TerminalPane has installed its event
+ * listener and opened xterm. Keeping the broker paused until then preserves
+ * the initial prompt produced before Connect returns to the frontend.
+ */
+export function StartTerminalOutput(tabID: string): $CancellablePromise<void> {
+    return $Call.ByID(3385637304, tabID);
 }
 
 /**

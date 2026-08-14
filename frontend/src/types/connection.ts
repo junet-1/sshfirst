@@ -47,6 +47,8 @@ export interface StatusEvent {
 
 export interface TerminalDataEvent {
   tabId: string
+  sessionGeneration: string
+  sequence: number
   data: string
 }
 

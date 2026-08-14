@@ -44,8 +44,19 @@ func TestMigration_RelaxHostLabelUniqueness_AppliesOnTopOfExistingData(t *testin
 		"Home Server", "home.example.com", HostSourceManual); err != nil {
 		t.Fatalf("insert under old schema: %v", err)
 	}
+	if _, err := s1.db.Exec(`INSERT INTO hosts (label, hostname, source) VALUES (?, ?, ?)`,
+		"Zulu", "zulu.example.com", HostSourceManual); err != nil {
+		t.Fatalf("insert second host under old schema: %v", err)
+	}
+	if _, err := s1.db.Exec(`INSERT INTO hosts (label, hostname, source) VALUES (?, ?, ?)`,
+		"Alpha", "alpha.example.com", HostSourceManual); err != nil {
+		t.Fatalf("insert third host under old schema: %v", err)
+	}
 	if _, err := s1.db.Exec(`INSERT INTO folders (name) VALUES (?)`, "Legacy Folder"); err != nil {
 		t.Fatalf("insert folder under old schema: %v", err)
+	}
+	if _, err := s1.db.Exec(`INSERT INTO folders (name) VALUES (?)`, "Alpha Folder"); err != nil {
+		t.Fatalf("insert second folder under old schema: %v", err)
 	}
 	if err := s1.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
@@ -63,17 +74,17 @@ func TestMigration_RelaxHostLabelUniqueness_AppliesOnTopOfExistingData(t *testin
 	if err != nil {
 		t.Fatalf("ListHosts after upgrade: %v", err)
 	}
-	if len(hosts) != 1 || hosts[0].Label != "Home Server" {
-		t.Fatalf("expected pre-existing host to survive the migration, got %+v", hosts)
+	if len(hosts) != 3 || hosts[0].Label != "Alpha" || hosts[1].Label != "Home Server" || hosts[2].Label != "Zulu" {
+		t.Fatalf("expected existing hosts to start in alphabetical sidebar order, got %+v", hosts)
 	}
-	if hosts[0].Protocol != HostProtocolSSH || hosts[0].RemotePath != "." {
-		t.Fatalf("expected upgraded host to default to SSH and its home folder, got %+v", hosts[0])
+	if hosts[1].Protocol != HostProtocolSSH || hosts[1].RemotePath != "." {
+		t.Fatalf("expected upgraded host to default to SSH and its home folder, got %+v", hosts[1])
 	}
 	folders, err := s2.ListFolders()
 	if err != nil {
 		t.Fatalf("ListFolders after upgrade: %v", err)
 	}
-	if len(folders) != 1 || folders[0].Icon != "folder" {
+	if len(folders) != 2 || folders[0].Name != "Alpha Folder" || folders[1].Name != "Legacy Folder" || folders[0].Icon != "folder" {
 		t.Fatalf("expected pre-existing folder to receive the default icon, got %+v", folders)
 	}
 
@@ -243,7 +254,7 @@ func TestHostTagsAndIdentityFilesAreNeverNil(t *testing.T) {
 	}
 }
 
-func TestListHostsOrderedByLabel(t *testing.T) {
+func TestListHostsKeepsSidebarInsertionOrder(t *testing.T) {
 	s := newTestStore(t)
 
 	for _, label := range []string{"zebra", "alpha", "mike"} {
@@ -259,9 +270,168 @@ func TestListHostsOrderedByLabel(t *testing.T) {
 	if len(hosts) != 3 {
 		t.Fatalf("expected 3 hosts, got %d", len(hosts))
 	}
-	if hosts[0].Label != "alpha" || hosts[1].Label != "mike" || hosts[2].Label != "zebra" {
-		t.Fatalf("expected alphabetical order, got %v, %v, %v", hosts[0].Label, hosts[1].Label, hosts[2].Label)
+	if hosts[0].Label != "zebra" || hosts[1].Label != "alpha" || hosts[2].Label != "mike" {
+		t.Fatalf("expected insertion order, got %v, %v, %v", hosts[0].Label, hosts[1].Label, hosts[2].Label)
 	}
+}
+
+func TestReorderHostPersistsSiblingOrderAndFolder(t *testing.T) {
+	s := newTestStore(t)
+	folder, err := s.CreateFolder("Production", nil)
+	if err != nil {
+		t.Fatalf("CreateFolder: %v", err)
+	}
+
+	rootA, err := s.CreateHost(HostInput{Label: "root-a", Hostname: "a.example.com"}, HostSourceManual)
+	if err != nil {
+		t.Fatalf("CreateHost(root-a): %v", err)
+	}
+	rootB, err := s.CreateHost(HostInput{Label: "root-b", Hostname: "b.example.com"}, HostSourceManual)
+	if err != nil {
+		t.Fatalf("CreateHost(root-b): %v", err)
+	}
+	inside, err := s.CreateHost(HostInput{Label: "inside", Hostname: "inside.example.com", FolderID: &folder.ID}, HostSourceManual)
+	if err != nil {
+		t.Fatalf("CreateHost(inside): %v", err)
+	}
+
+	if err := s.ReorderHost(rootB.ID, nil, &rootA.ID, true); err != nil {
+		t.Fatalf("ReorderHost before root target: %v", err)
+	}
+	if got := hostLabelsInFolder(t, s, nil); !equalStrings(got, []string{"root-b", "root-a"}) {
+		t.Fatalf("unexpected root order: %v", got)
+	}
+
+	if err := s.ReorderHost(rootA.ID, &folder.ID, &inside.ID, true); err != nil {
+		t.Fatalf("ReorderHost into folder: %v", err)
+	}
+	if got := hostLabelsInFolder(t, s, &folder.ID); !equalStrings(got, []string{"root-a", "inside"}) {
+		t.Fatalf("unexpected folder order: %v", got)
+	}
+	if got := hostLabelsInFolder(t, s, nil); !equalStrings(got, []string{"root-b"}) {
+		t.Fatalf("old root order was not compacted: %v", got)
+	}
+}
+
+func TestReorderHostRejectsTargetFromAnotherFolder(t *testing.T) {
+	s := newTestStore(t)
+	folder := mustCreateFolder(t, s, "Production", nil)
+	root := mustCreateHost(t, s, HostInput{Label: "root", Hostname: "root.example.com"})
+	inside := mustCreateHost(t, s, HostInput{Label: "inside", Hostname: "inside.example.com", FolderID: &folder.ID})
+
+	if err := s.ReorderHost(root.ID, nil, &inside.ID, true); err == nil {
+		t.Fatal("expected mismatched destination target to fail")
+	}
+	got, err := s.GetHost(root.ID)
+	if err != nil {
+		t.Fatalf("GetHost: %v", err)
+	}
+	if got.FolderID != nil {
+		t.Fatalf("failed reorder changed host folder: %+v", got.FolderID)
+	}
+}
+
+func TestReorderFolderPersistsSiblingOrderAndRejectsCycles(t *testing.T) {
+	s := newTestStore(t)
+	a := mustCreateFolder(t, s, "A", nil)
+	mustCreateFolder(t, s, "B", nil)
+	c := mustCreateFolder(t, s, "C", nil)
+	child := mustCreateFolder(t, s, "Child", &a.ID)
+
+	if err := s.ReorderFolder(c.ID, nil, &a.ID, true); err != nil {
+		t.Fatalf("ReorderFolder: %v", err)
+	}
+	if got := folderNamesUnder(t, s, nil); !equalStrings(got, []string{"C", "A", "B"}) {
+		t.Fatalf("unexpected root folder order: %v", got)
+	}
+
+	if err := s.ReorderFolder(a.ID, &child.ID, nil, false); err == nil {
+		t.Fatal("expected descendant move to be rejected")
+	}
+	if got := folderNamesUnder(t, s, nil); !equalStrings(got, []string{"C", "A", "B"}) {
+		t.Fatalf("failed cycle move changed folder order: %v", got)
+	}
+}
+
+func TestDeleteFolderAppendsNestedHostsToRootInTreeOrder(t *testing.T) {
+	s := newTestStore(t)
+	root := mustCreateHost(t, s, HostInput{Label: "root", Hostname: "root.example.com"})
+	parent := mustCreateFolder(t, s, "Parent", nil)
+	parentHost := mustCreateHost(t, s, HostInput{Label: "parent-host", Hostname: "parent.example.com", FolderID: &parent.ID})
+	child := mustCreateFolder(t, s, "Child", &parent.ID)
+	childHost := mustCreateHost(t, s, HostInput{Label: "child-host", Hostname: "child.example.com", FolderID: &child.ID})
+
+	if err := s.DeleteFolder(parent.ID); err != nil {
+		t.Fatalf("DeleteFolder: %v", err)
+	}
+	if got := hostLabelsInFolder(t, s, nil); !equalStrings(got, []string{root.Label, parentHost.Label, childHost.Label}) {
+		t.Fatalf("nested hosts were not appended in tree order: %v", got)
+	}
+	if folders, err := s.ListFolders(); err != nil || len(folders) != 0 {
+		t.Fatalf("nested folders survived parent deletion: folders=%v err=%v", folders, err)
+	}
+}
+
+func mustCreateHost(t *testing.T, s *Store, input HostInput) Host {
+	t.Helper()
+	host, err := s.CreateHost(input, HostSourceManual)
+	if err != nil {
+		t.Fatalf("CreateHost(%q): %v", input.Label, err)
+	}
+	return host
+}
+
+func mustCreateFolder(t *testing.T, s *Store, name string, parentID *int64) Folder {
+	t.Helper()
+	folder, err := s.CreateFolder(name, parentID)
+	if err != nil {
+		t.Fatalf("CreateFolder(%q): %v", name, err)
+	}
+	return folder
+}
+
+func hostLabelsInFolder(t *testing.T, s *Store, folderID *int64) []string {
+	t.Helper()
+	hosts, err := s.ListHosts()
+	if err != nil {
+		t.Fatalf("ListHosts: %v", err)
+	}
+	var labels []string
+	for _, host := range hosts {
+		if (folderID == nil && host.FolderID == nil) ||
+			(folderID != nil && host.FolderID != nil && *folderID == *host.FolderID) {
+			labels = append(labels, host.Label)
+		}
+	}
+	return labels
+}
+
+func folderNamesUnder(t *testing.T, s *Store, parentID *int64) []string {
+	t.Helper()
+	folders, err := s.ListFolders()
+	if err != nil {
+		t.Fatalf("ListFolders: %v", err)
+	}
+	var names []string
+	for _, folder := range folders {
+		if (parentID == nil && folder.ParentID == nil) ||
+			(parentID != nil && folder.ParentID != nil && *parentID == *folder.ParentID) {
+			names = append(names, folder.Name)
+		}
+	}
+	return names
+}
+
+func equalStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func TestUpsertImportedHostIsIdempotent(t *testing.T) {

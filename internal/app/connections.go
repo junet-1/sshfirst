@@ -262,8 +262,10 @@ func (a *App) NewTerminalTab(connectionID string, cols, rows int) (TabInfo, erro
 func (a *App) openTab(cs *connectionState, cols, rows int, title string) (TabInfo, error) {
 	tabID := uuid.NewString()
 	generation := uuid.NewString()
+	a.output.register(tabID, generation)
 	session, err := a.startTerminalSession(cs.client, tabID, generation, cols, rows)
 	if err != nil {
+		a.output.removeGeneration(tabID, generation)
 		return TabInfo{}, fmt.Errorf("start terminal session: %w", err)
 	}
 
@@ -306,8 +308,8 @@ func (a *App) startTerminalSession(client *sshpkg.Client, tabID, generation stri
 		Cols:         cols,
 		Rows:         rows,
 		ForwardAgent: client.AgentForwarding,
-		OnOutput: func(data []byte) {
-			a.emit("terminal:data", TerminalDataEvent{TabID: tabID, Data: string(data)})
+		OnOutput: func(data []byte) bool {
+			return a.output.publish(tabID, generation, data)
 		},
 		OnClosed: func(closeErr error) {
 			a.mu.Lock()
@@ -374,6 +376,7 @@ func (a *App) CloseTab(tabID string) error {
 	if !ok {
 		return nil
 	}
+	a.output.remove(tabID)
 	if ts.session == nil {
 		return nil
 	}
@@ -419,6 +422,25 @@ func (a *App) ResizeTerminal(tabID string, cols, rows int) error {
 	return ts.session.Resize(cols, rows)
 }
 
+// StartTerminalOutput is called after TerminalPane has installed its event
+// listener and opened xterm. Keeping the broker paused until then preserves
+// the initial prompt produced before Connect returns to the frontend.
+func (a *App) StartTerminalOutput(tabID string) {
+	a.output.start(tabID)
+}
+
+// PauseTerminalOutput stops delivery while a terminal component is unmounted.
+// The next StartTerminalOutput resumes with the unacknowledged batch.
+func (a *App) PauseTerminalOutput(tabID string) {
+	a.output.pause(tabID)
+}
+
+// AcknowledgeTerminalOutput releases the next bounded batch only after xterm
+// has parsed the current one. Stale generations/sequences are ignored.
+func (a *App) AcknowledgeTerminalOutput(tabID, sessionGeneration string, sequence uint64) {
+	a.output.acknowledge(tabID, sessionGeneration, sequence)
+}
+
 // Disconnect closes an SSH connection and every terminal tab on it.
 func (a *App) Disconnect(connectionID string) error {
 	a.mu.Lock()
@@ -436,9 +458,13 @@ func (a *App) Disconnect(connectionID string) error {
 func (a *App) closeConnection(cs *connectionState) {
 	a.mu.Lock()
 	sessions := make([]*terminalpkg.Session, 0, len(cs.tabOrder))
+	terminalTabIDs := make([]string, 0, len(cs.tabOrder))
 	for _, id := range cs.tabOrder {
 		if ts, ok := a.tabs[id]; ok && ts.session != nil {
 			sessions = append(sessions, ts.session)
+		}
+		if ts, ok := a.tabs[id]; ok && ts.kind == TabKindTerminal {
+			terminalTabIDs = append(terminalTabIDs, id)
 		}
 		delete(a.tabs, id)
 	}
@@ -452,6 +478,9 @@ func (a *App) closeConnection(cs *connectionState) {
 	forwards := cs.forwards
 	cs.forwards = make(map[int64]*activeForward)
 	a.mu.Unlock()
+	for _, tabID := range terminalTabIDs {
+		a.output.remove(tabID)
+	}
 
 	if stopKeepalive != nil {
 		close(stopKeepalive)
@@ -526,6 +555,11 @@ func (a *App) Reconnect(connectionID string) (ConnectionInfo, error) {
 	cs.status = StatusConnecting
 	cs.lastError = ""
 	a.mu.Unlock()
+	for _, previous := range previousTabs {
+		if previous.kind == TabKindTerminal {
+			a.output.suspend(previous.id)
+		}
+	}
 
 	if oldStopKeepalive != nil {
 		close(oldStopKeepalive)
@@ -582,8 +616,14 @@ func (a *App) Reconnect(connectionID string) (ConnectionInfo, error) {
 			continue
 		}
 		generation := uuid.NewString()
+		a.output.register(prev.id, generation)
 		session, err := a.startTerminalSession(client, prev.id, generation, prev.cols, prev.rows)
 		if err != nil {
+			for _, previous := range previousTabs {
+				if previous.kind == TabKindTerminal {
+					a.output.suspend(previous.id)
+				}
+			}
 			for _, replacement := range replacements {
 				_ = replacement.session.Close()
 			}
@@ -622,6 +662,11 @@ func (a *App) Reconnect(connectionID string) (ConnectionInfo, error) {
 	}
 	a.mu.Unlock()
 	if !stillConnected || current != cs {
+		for _, prev := range previousTabs {
+			if prev.kind == TabKindTerminal {
+				a.output.remove(prev.id)
+			}
+		}
 		for _, replacement := range replacements {
 			_ = replacement.session.Close()
 		}

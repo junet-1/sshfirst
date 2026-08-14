@@ -249,6 +249,34 @@ func (a *App) MoveHostToFolder(hostID int64, folderID *int64) error {
 	return nil
 }
 
+// ReorderHost persists a host's exact position among the destination folder's
+// children. A nil targetHostID appends; otherwise before selects which side of
+// the target row receives the moved host.
+func (a *App) ReorderHost(hostID int64, folderID, targetHostID *int64, before bool) error {
+	if err := a.requireStore(); err != nil {
+		return err
+	}
+	if err := a.store.ReorderHost(hostID, folderID, targetHostID, before); err != nil {
+		return err
+	}
+	a.refreshTray()
+	a.emit("hosts:changed", nil)
+	return nil
+}
+
+// ReorderFolder persists a folder's exact position among siblings while also
+// supporting re-parenting. A nil targetFolderID appends under parentID.
+func (a *App) ReorderFolder(folderID int64, parentID, targetFolderID *int64, before bool) error {
+	if err := a.requireStore(); err != nil {
+		return err
+	}
+	if err := a.store.ReorderFolder(folderID, parentID, targetFolderID, before); err != nil {
+		return err
+	}
+	a.emit("folders:changed", nil)
+	return nil
+}
+
 // ImportSSHConfig reads ~/.ssh/config (following Include directives) and
 // upserts each concrete Host alias into the local host list, matched by
 // label so re-running the import updates rather than duplicates entries.

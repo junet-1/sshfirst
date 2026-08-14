@@ -65,11 +65,14 @@ type StatusEvent struct {
 	Error        string           `json:"error,omitempty"`
 }
 
-// TerminalDataEvent is emitted on "terminal:data" for every chunk of output
-// a remote shell produces.
+// TerminalDataEvent is one bounded output batch. The frontend acknowledges
+// Sequence only after xterm has parsed Data, which keeps backend buffering and
+// Wails event dispatch bounded when a native webview is throttled or hidden.
 type TerminalDataEvent struct {
-	TabID string `json:"tabId"`
-	Data  string `json:"data"`
+	TabID             string `json:"tabId"`
+	SessionGeneration string `json:"sessionGeneration"`
+	Sequence          uint64 `json:"sequence"`
+	Data              string `json:"data"`
 }
 
 // TerminalClosedEvent is emitted on "terminal:closed" once a shell exits.

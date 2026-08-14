@@ -22,6 +22,7 @@ export interface Host {
   loginScript: string
   controlPanelUrl: string
   tags: string[]
+  sortOrder: number
   lastUsedAt?: string
   createdAt: string
   updatedAt: string
@@ -51,6 +52,7 @@ export interface Folder {
   name: string
   icon: string
   parentId?: number
+  sortOrder: number
 }
 
 export interface ImportResult {

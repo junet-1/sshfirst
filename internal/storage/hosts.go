@@ -11,13 +11,14 @@ import (
 // ErrNotFound is returned when a lookup by ID matches no row.
 var ErrNotFound = errors.New("not found")
 
-// ListHosts returns all hosts ordered by label, including their tags.
+// ListHosts returns all hosts in their persisted sidebar order, including
+// their tags. Filtering by folder in the frontend preserves sibling order.
 func (s *Store) ListHosts() ([]Host, error) {
 	rows, err := s.db.Query(`
 		SELECT id, label, hostname, port, user, identity_files, proxy_jump,
 		       forward_agent, auth_method, protocol, remote_path, folder_id, credential_id, favorite, source, notes,
-		       login_script, control_panel_url, last_used_at, created_at, updated_at
-		FROM hosts ORDER BY label COLLATE NOCASE ASC`)
+		       login_script, control_panel_url, sort_order, last_used_at, created_at, updated_at
+		FROM hosts ORDER BY sort_order ASC, label COLLATE NOCASE ASC, id ASC`)
 	if err != nil {
 		return nil, err
 	}
@@ -52,7 +53,7 @@ func (s *Store) GetHost(id int64) (Host, error) {
 	row := s.db.QueryRow(`
 		SELECT id, label, hostname, port, user, identity_files, proxy_jump,
 		       forward_agent, auth_method, protocol, remote_path, folder_id, credential_id, favorite, source, notes,
-		       login_script, control_panel_url, last_used_at, created_at, updated_at
+		       login_script, control_panel_url, sort_order, last_used_at, created_at, updated_at
 		FROM hosts WHERE id = ?`, id)
 	h, err := scanHost(row)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -84,7 +85,7 @@ func scanHost(row rowScanner) (Host, error) {
 
 	err := row.Scan(&h.ID, &h.Label, &h.Hostname, &h.Port, &h.User, &identityFilesJSON,
 		&h.ProxyJump, &h.ForwardAgent, &h.AuthMethod, &h.Protocol, &h.RemotePath, &folderID, &credentialID, &h.Favorite, &h.Source,
-		&h.Notes, &h.LoginScript, &h.ControlPanelURL, &lastUsedAt, &h.CreatedAt, &h.UpdatedAt)
+		&h.Notes, &h.LoginScript, &h.ControlPanelURL, &h.SortOrder, &lastUsedAt, &h.CreatedAt, &h.UpdatedAt)
 	if err != nil {
 		return Host{}, err
 	}
@@ -122,11 +123,15 @@ func (s *Store) CreateHost(input HostInput, source HostSource) (Host, error) {
 	}
 	res, err := s.db.Exec(`
 		INSERT INTO hosts (label, hostname, port, user, identity_files, proxy_jump,
-			forward_agent, auth_method, protocol, remote_path, folder_id, credential_id, source, notes, login_script, control_panel_url, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))`,
+			forward_agent, auth_method, protocol, remote_path, folder_id, credential_id, source, notes, login_script, control_panel_url,
+			sort_order, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+			(SELECT COALESCE(MAX(sort_order) + 1, 0) FROM hosts WHERE folder_id IS ?),
+			strftime('%Y-%m-%dT%H:%M:%fZ','now'))`,
 		input.Label, input.Hostname, portOrDefault(input.Port), input.User, string(identityFilesJSON),
 		input.ProxyJump, input.ForwardAgent, authMethodOrDefault(input.AuthMethod), protocolOrDefault(input.Protocol),
-		remotePathOrDefault(input.RemotePath), input.FolderID, input.CredentialID, source, input.Notes, input.LoginScript, input.ControlPanelURL)
+		remotePathOrDefault(input.RemotePath), input.FolderID, input.CredentialID, source, input.Notes, input.LoginScript, input.ControlPanelURL,
+		input.FolderID)
 	if err != nil {
 		return Host{}, err
 	}
@@ -149,11 +154,17 @@ func (s *Store) UpdateHost(id int64, input HostInput) (Host, error) {
 	res, err := s.db.Exec(`
 		UPDATE hosts SET label = ?, hostname = ?, port = ?, user = ?, identity_files = ?,
 			proxy_jump = ?, forward_agent = ?, auth_method = ?, protocol = ?, remote_path = ?, folder_id = ?, credential_id = ?, notes = ?,
-			login_script = ?, control_panel_url = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+			login_script = ?, control_panel_url = ?,
+			sort_order = CASE
+				WHEN folder_id IS ? THEN sort_order
+				ELSE (SELECT COALESCE(MAX(sibling.sort_order) + 1, 0) FROM hosts AS sibling WHERE sibling.folder_id IS ?)
+			END,
+			updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
 		WHERE id = ?`,
 		input.Label, input.Hostname, portOrDefault(input.Port), input.User, string(identityFilesJSON),
 		input.ProxyJump, input.ForwardAgent, authMethodOrDefault(input.AuthMethod), protocolOrDefault(input.Protocol),
-		remotePathOrDefault(input.RemotePath), input.FolderID, input.CredentialID, input.Notes, input.LoginScript, input.ControlPanelURL, id)
+		remotePathOrDefault(input.RemotePath), input.FolderID, input.CredentialID, input.Notes, input.LoginScript, input.ControlPanelURL,
+		input.FolderID, input.FolderID, id)
 	if err != nil {
 		return Host{}, err
 	}

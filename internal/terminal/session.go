@@ -14,7 +14,9 @@ import (
 
 // OutputHandler receives raw terminal output bytes as they arrive, meant to
 // be forwarded to xterm.js verbatim (it handles ANSI escape sequences itself).
-type OutputHandler func(data []byte)
+// Returning false stops the pump when the owning tab/session was closed or
+// replaced while a backpressured write was waiting.
+type OutputHandler func(data []byte) bool
 
 // ClosedHandler is invoked once when the remote shell exits, with the reason
 // (nil for a clean exit).
@@ -122,7 +124,9 @@ func pump(r io.Reader, onOutput OutputHandler) {
 		if n > 0 && onOutput != nil {
 			chunk := make([]byte, n)
 			copy(chunk, buf[:n])
-			onOutput(chunk)
+			if !onOutput(chunk) {
+				return
+			}
 		}
 		if err != nil {
 			return

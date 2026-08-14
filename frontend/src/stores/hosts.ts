@@ -11,8 +11,16 @@ export const searchQuery = writable('')
 export const hostsLoading = writable(false)
 export const hostsError = writable<string | null>(null)
 
-function byLabel(a: Host, b: Host): number {
+export function byHostLabel(a: Host, b: Host): number {
   return a.label.localeCompare(b.label)
+}
+
+export function byHostOrder(a: Host, b: Host): number {
+  return a.sortOrder - b.sortOrder || byHostLabel(a, b) || a.id - b.id
+}
+
+export function byFolderOrder(a: Folder, b: Folder): number {
+  return a.sortOrder - b.sortOrder || a.name.localeCompare(b.name) || a.id - b.id
 }
 
 export async function loadHosts(): Promise<void> {
@@ -20,7 +28,7 @@ export async function loadHosts(): Promise<void> {
   hostsError.set(null)
   try {
     const [hostList, folderList] = await Promise.all([backend.listHosts(), backend.listFolders()])
-    hosts.set([...(hostList ?? [])].sort(byLabel))
+    hosts.set(hostList ?? [])
     folders.set(folderList ?? [])
   } catch (e) {
     hostsError.set(String(e))
@@ -31,7 +39,7 @@ export async function loadHosts(): Promise<void> {
 
 export async function createHost(input: HostInput): Promise<Host> {
   const host = await backend.createHost(input)
-  hosts.update((list) => [...list, host].sort(byLabel))
+  hosts.update((list) => [...list, host])
   return host
 }
 
@@ -60,7 +68,7 @@ export async function duplicateHost(id: number): Promise<Host | null> {
 
 export async function updateHost(id: number, input: HostInput): Promise<Host> {
   const host = await backend.updateHost(id, input)
-  hosts.update((list) => list.map((h) => (h.id === id ? host : h)).sort(byLabel))
+  hosts.update((list) => list.map((h) => (h.id === id ? host : h)))
   return host
 }
 
@@ -132,12 +140,32 @@ export async function deleteFolder(id: number): Promise<void> {
 
 export async function moveFolder(id: number, parentId: number | null): Promise<void> {
   await backend.moveFolder(id, parentId)
-  folders.update((list) => list.map((f) => (f.id === id ? { ...f, parentId: parentId ?? undefined } : f)))
+  folders.set((await backend.listFolders()) ?? [])
 }
 
 export async function moveHostToFolder(hostId: number, folderId: number | null): Promise<void> {
   await backend.moveHostToFolder(hostId, folderId)
-  hosts.update((list) => list.map((h) => (h.id === hostId ? { ...h, folderId: folderId ?? undefined } : h)))
+  hosts.set((await backend.listHosts()) ?? [])
+}
+
+export async function reorderHost(
+  hostId: number,
+  folderId: number | null,
+  targetHostId: number | null,
+  before: boolean
+): Promise<void> {
+  await backend.reorderHost(hostId, folderId, targetHostId, before)
+  hosts.set((await backend.listHosts()) ?? [])
+}
+
+export async function reorderFolder(
+  folderId: number,
+  parentId: number | null,
+  targetFolderId: number | null,
+  before: boolean
+): Promise<void> {
+  await backend.reorderFolder(folderId, parentId, targetFolderId, before)
+  folders.set((await backend.listFolders()) ?? [])
 }
 
 export const filteredHosts = derived([hosts, searchQuery], ([$hosts, $query]) => {
@@ -152,7 +180,7 @@ export const filteredHosts = derived([hosts, searchQuery], ([$hosts, $query]) =>
   )
 })
 
-export const favoriteHosts = derived(filteredHosts, ($hosts) => $hosts.filter((h) => h.favorite))
+export const favoriteHosts = derived(filteredHosts, ($hosts) => $hosts.filter((h) => h.favorite).sort(byHostLabel))
 
 export const recentHosts = derived(filteredHosts, ($hosts) =>
   $hosts

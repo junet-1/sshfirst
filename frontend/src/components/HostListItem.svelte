@@ -8,6 +8,7 @@
   export let selected: boolean
   export let status: 'offline' | 'connecting' | 'online'
   export let editing: boolean
+  export let reorderable = false
 
   const dispatch = createEventDispatcher<{
     select: void
@@ -17,10 +18,12 @@
     renameCommit: string
     renameCancel: void
     dragStart: DragEvent
+    dragEnd: DragEvent
   }>()
 
   let editValue = host.label
   let inputEl: HTMLInputElement | undefined
+  let dragging = false
 
   // Web hosts show their panel's cached favicon (globe until/if it loads). The
   // backend fetches and persists it; we just request it once per host here.
@@ -63,6 +66,16 @@
     dispatch('select')
     ;(e.currentTarget as HTMLElement).focus()
   }
+
+  function startDrag(e: DragEvent): void {
+    dragging = true
+    dispatch('dragStart', e)
+  }
+
+  function endDrag(e: DragEvent): void {
+    dragging = false
+    dispatch('dragEnd', e)
+  }
 </script>
 
 <!-- Enter/F2/Delete are handled by the parent .tree container's keydown
@@ -72,14 +85,18 @@
   class="row"
   data-sidebar-host-row
   class:selected
+  class:dragging
   role="option"
   aria-selected={selected}
+  aria-keyshortcuts={reorderable ? 'Alt+ArrowUp Alt+ArrowDown' : undefined}
+  aria-describedby={reorderable ? 'sidebar-reorder-hint' : undefined}
   tabindex="0"
   draggable={!editing}
   on:click={selectAndFocus}
   on:dblclick={() => dispatch('connect')}
   on:contextmenu|preventDefault={(e) => dispatch('contextmenu', e)}
-  on:dragstart={(e) => dispatch('dragStart', e)}
+  on:dragstart={startDrag}
+  on:dragend={endDrag}
 >
   <span
     class="protocol-icon"
@@ -144,6 +161,10 @@
   .row.selected {
     background: var(--highlight-bg);
     color: var(--highlight-text);
+  }
+
+  .row.dragging {
+    opacity: 0.55;
   }
 
   .status-dot {

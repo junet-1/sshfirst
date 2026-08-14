@@ -71,6 +71,9 @@ const en: Dictionary = {
   'sidebar.deleteFolder.title': 'Delete Folder?',
   'sidebar.deleteFolder.body': 'Delete “{name}”? Hosts inside it are kept and moved out of the folder.',
   'sidebar.dropHostsHere': 'Drop hosts here',
+  'sidebar.reorder.hint': 'Drag to reorder · Alt+Arrow keys move within this level',
+  'sidebar.reorder.host': 'Moved {name}.',
+  'sidebar.reorder.folder': 'Moved folder {name}.',
 
   'folderDialog.titleNew': 'New Folder',
   'folderDialog.titleEdit': 'Edit Folder',
@@ -501,6 +504,9 @@ const de: Dictionary = {
   'sidebar.deleteFolder.title': 'Ordner löschen?',
   'sidebar.deleteFolder.body': '„{name}“ löschen? Enthaltene Hosts bleiben erhalten und werden aus dem Ordner verschoben.',
   'sidebar.dropHostsHere': 'Hosts hierher ziehen',
+  'sidebar.reorder.hint': 'Zum Sortieren ziehen · Alt+Pfeiltasten verschieben innerhalb dieser Ebene',
+  'sidebar.reorder.host': '{name} wurde verschoben.',
+  'sidebar.reorder.folder': 'Ordner {name} wurde verschoben.',
 
   'folderDialog.titleNew': 'Neuer Ordner',
   'folderDialog.titleEdit': 'Ordner bearbeiten',

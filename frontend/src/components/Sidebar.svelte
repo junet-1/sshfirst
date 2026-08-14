@@ -8,6 +8,8 @@
   import {
     allTags,
     confirmAndDeleteHost,
+    byFolderOrder,
+    byHostOrder,
     deleteFolder,
     favoriteHosts,
     filteredHosts,
@@ -15,8 +17,8 @@
     hosts,
     duplicateHost,
     importSSHConfigWithFeedback,
-    moveFolder,
-    moveHostToFolder,
+    reorderFolder,
+    reorderHost,
     recentHosts,
     searchQuery,
     setFavorite,
@@ -30,6 +32,7 @@
   import { transferDialogHostId } from '../stores/transfer'
   import { forwardingDialogHostId } from '../stores/forwarding'
   import { hostToInput, type Folder, type Host } from '../types/host'
+  import { adjacentItem, treeDropPosition, type RelativeDropPosition } from '../lib/sidebarReorder'
 
   const HOST_DND = 'application/x-ssh-first-host'
   const FOLDER_DND = 'application/x-ssh-first-folder'
@@ -37,12 +40,19 @@
   const MIN_SIDEBAR_WIDTH = 190
   const MAX_SIDEBAR_WIDTH = 480
   type HostConnectionStatus = 'offline' | 'connecting' | 'online'
+  type DragItem = { kind: 'host' | 'folder'; id: number }
+  type DropTarget =
+    | { kind: 'host'; id: number; folderId: number | null; position: RelativeDropPosition }
+    | { kind: 'folder'; id: number; parentId: number | null; position: RelativeDropPosition | 'inside' }
+    | { kind: 'root'; surface: 'header' | 'list' }
 
   let sectionOpen: Record<string, boolean> = { favorites: true, recent: true, folders: true, tags: false }
   let renamingHostId: number | null = null
   let contextMenu: { x: number; y: number; hostId: number } | null = null
   let activeTagFilter: string | null = null
-  let dragOverFolderId: number | 'root' | null = null
+  let draggedItem: DragItem | null = null
+  let dropTarget: DropTarget | null = null
+  let reorderAnnouncement = ''
   let selectedRow: string | null = null // "<section>:<hostId>" of the exact clicked row
   let collapsedFolders = new Set<number>()
   let folderContextMenu: { x: number; y: number; folderId: number } | null = null
@@ -117,7 +127,7 @@
       arr.push(f)
       byParent.set(p, arr)
     }
-    for (const arr of byParent.values()) arr.sort((a, b) => a.name.localeCompare(b.name))
+    for (const arr of byParent.values()) arr.sort(byFolderOrder)
     const out: { folder: Folder; depth: number }[] = []
     const walk = (parent: number | null, depth: number): void => {
       for (const f of byParent.get(parent) ?? []) {
@@ -152,8 +162,8 @@
     ? $filteredHosts.filter((h) => h.tags.includes(activeTagFilter as string))
     : $filteredHosts
 
-  $: unfoldered = tagFiltered.filter((h) => h.folderId == null)
-  $: byFolder = (folderId: number) => tagFiltered.filter((h) => h.folderId === folderId)
+  $: unfoldered = tagFiltered.filter((h) => h.folderId == null).sort(byHostOrder)
+  $: byFolder = (folderId: number) => tagFiltered.filter((h) => h.folderId === folderId).sort(byHostOrder)
 
   function toggle(section: string): void {
     sectionOpen = { ...sectionOpen, [section]: !sectionOpen[section] }
@@ -312,39 +322,189 @@
   // and corrupts GTK's drop state → SIGABRT after a couple of drops.
   function onDragStart(host: Host, e: DragEvent): void {
     if (!e.dataTransfer) return
+    draggedItem = { kind: 'host', id: host.id }
     e.dataTransfer.effectAllowed = 'move'
     e.dataTransfer.setData(HOST_DND, String(host.id))
   }
 
   function onFolderDragStart(folder: Folder, e: DragEvent): void {
     if (!e.dataTransfer) return
+    draggedItem = { kind: 'folder', id: folder.id }
     e.dataTransfer.effectAllowed = 'move'
     e.dataTransfer.setData(FOLDER_DND, String(folder.id))
   }
 
-  function onDragOver(target: number | 'root', e: DragEvent): void {
-    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
-    dragOverFolderId = target
+  function finishDrag(): void {
+    draggedItem = null
+    dropTarget = null
   }
 
-  // Folder rows accept dropped hosts/folders. The section header and loose
-  // root-host area use target "root" to remove folder assignment / nesting.
-  async function onDrop(target: number | 'root', e: DragEvent): Promise<void> {
-    dragOverFolderId = null
-    const hostIdStr = e.dataTransfer?.getData(HOST_DND)
-    if (hostIdStr) {
-      await moveHostToFolder(Number(hostIdStr), target === 'root' ? null : target)
+  function dragItemFromEvent(e: DragEvent): DragItem | null {
+    if (draggedItem) return draggedItem
+    const hostID = Number(e.dataTransfer?.getData(HOST_DND))
+    if (Number.isFinite(hostID) && hostID > 0) return { kind: 'host', id: hostID }
+    const folderID = Number(e.dataTransfer?.getData(FOLDER_DND))
+    if (Number.isFinite(folderID) && folderID > 0) return { kind: 'folder', id: folderID }
+    return null
+  }
+
+  function allowMove(e: DragEvent): void {
+    e.preventDefault()
+    e.stopPropagation()
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
+  }
+
+  function relativePosition(e: DragEvent, inside = false): RelativeDropPosition | 'inside' {
+    const bounds = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    return treeDropPosition(e.clientY, bounds.top, bounds.height, inside)
+  }
+
+  function onHostDragOver(host: Host, folderId: number | null, e: DragEvent): void {
+    if (draggedItem) e.stopPropagation()
+    if (draggedItem?.kind !== 'host' || draggedItem.id === host.id) return
+    allowMove(e)
+    dropTarget = { kind: 'host', id: host.id, folderId, position: relativePosition(e) as RelativeDropPosition }
+  }
+
+  async function onHostDrop(host: Host, folderId: number | null, e: DragEvent): Promise<void> {
+    const item = dragItemFromEvent(e)
+    if (item) e.stopPropagation()
+    if (item?.kind !== 'host' || item.id === host.id) {
+      finishDrag()
       return
     }
-    const folderIdStr = e.dataTransfer?.getData(FOLDER_DND)
-    if (folderIdStr) {
-      const id = Number(folderIdStr)
-      if (target !== 'root' && target === id) return // no-op onto itself
-      try {
-        await moveFolder(id, target === 'root' ? null : target)
-      } catch (err) {
-        notify('error', err instanceof Error ? err.message : String(err))
+    allowMove(e)
+    const position =
+      dropTarget?.kind === 'host' && dropTarget.id === host.id
+        ? dropTarget.position
+        : (relativePosition(e) as RelativeDropPosition)
+    finishDrag()
+    try {
+      await reorderHost(item.id, folderId, host.id, position === 'before')
+      const moved = $hosts.find((candidate) => candidate.id === item.id)
+      if (moved) reorderAnnouncement = $t('sidebar.reorder.host', { name: moved.label })
+    } catch (err) {
+      notify('error', err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  function onFolderDragOver(folder: Folder, e: DragEvent): void {
+    if (draggedItem) e.stopPropagation()
+    if (!draggedItem || (draggedItem.kind === 'folder' && draggedItem.id === folder.id)) return
+    allowMove(e)
+    dropTarget = {
+      kind: 'folder',
+      id: folder.id,
+      parentId: folder.parentId ?? null,
+      position: draggedItem.kind === 'host' ? 'inside' : relativePosition(e, true)
+    }
+  }
+
+  async function onFolderDrop(folder: Folder, e: DragEvent): Promise<void> {
+    const item = dragItemFromEvent(e)
+    if (item) e.stopPropagation()
+    if (!item || (item.kind === 'folder' && item.id === folder.id)) {
+      finishDrag()
+      return
+    }
+    allowMove(e)
+    const position =
+      dropTarget?.kind === 'folder' && dropTarget.id === folder.id
+        ? dropTarget.position
+        : item.kind === 'host'
+          ? 'inside'
+          : relativePosition(e, true)
+    finishDrag()
+    try {
+      if (item.kind === 'host') {
+        await reorderHost(item.id, folder.id, null, false)
+        const moved = $hosts.find((candidate) => candidate.id === item.id)
+        if (moved) reorderAnnouncement = $t('sidebar.reorder.host', { name: moved.label })
+      } else if (position === 'inside') {
+        await reorderFolder(item.id, folder.id, null, false)
+        const moved = $folders.find((candidate) => candidate.id === item.id)
+        if (moved) reorderAnnouncement = $t('sidebar.reorder.folder', { name: moved.name })
+      } else {
+        await reorderFolder(item.id, folder.parentId ?? null, folder.id, position === 'before')
+        const moved = $folders.find((candidate) => candidate.id === item.id)
+        if (moved) reorderAnnouncement = $t('sidebar.reorder.folder', { name: moved.name })
       }
+    } catch (err) {
+      notify('error', err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  function onRootDragOver(surface: 'header' | 'list', e: DragEvent): void {
+    if (!draggedItem) return
+    allowMove(e)
+    dropTarget = { kind: 'root', surface }
+  }
+
+  async function onRootDrop(e: DragEvent): Promise<void> {
+    const item = dragItemFromEvent(e)
+    if (!item) {
+      finishDrag()
+      return
+    }
+    allowMove(e)
+    finishDrag()
+    try {
+      if (item.kind === 'host') {
+        await reorderHost(item.id, null, null, false)
+        const moved = $hosts.find((candidate) => candidate.id === item.id)
+        if (moved) reorderAnnouncement = $t('sidebar.reorder.host', { name: moved.label })
+      } else {
+        await reorderFolder(item.id, null, null, false)
+        const moved = $folders.find((candidate) => candidate.id === item.id)
+        if (moved) reorderAnnouncement = $t('sidebar.reorder.folder', { name: moved.name })
+      }
+    } catch (err) {
+      notify('error', err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  function onDragLeave(e: DragEvent): void {
+    const current = e.currentTarget as HTMLElement
+    if (e.relatedTarget instanceof Node && current.contains(e.relatedTarget)) return
+    dropTarget = null
+  }
+
+  async function moveHostWithKeyboard(host: Host, direction: -1 | 1): Promise<void> {
+    const folderId = host.folderId ?? null
+    const siblings = tagFiltered.filter((candidate) => (candidate.folderId ?? null) === folderId).sort(byHostOrder)
+    const target = adjacentItem(siblings, host.id, direction)
+    if (!target) return
+    try {
+      await reorderHost(host.id, folderId, target.id, direction < 0)
+      reorderAnnouncement = $t('sidebar.reorder.host', { name: host.label })
+    } catch (err) {
+      notify('error', err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  async function moveFolderWithKeyboard(folder: Folder, direction: -1 | 1): Promise<void> {
+    const parentId = folder.parentId ?? null
+    const siblings = $folders.filter((candidate) => (candidate.parentId ?? null) === parentId).sort(byFolderOrder)
+    const target = adjacentItem(siblings, folder.id, direction)
+    if (!target) return
+    try {
+      await reorderFolder(folder.id, parentId, target.id, direction < 0)
+      reorderAnnouncement = $t('sidebar.reorder.folder', { name: folder.name })
+    } catch (err) {
+      notify('error', err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  function onFolderKeydown(folder: Folder, e: KeyboardEvent): void {
+    // Folder rows live inside the host listbox; never let their keys act on a
+    // previously selected host through the tree's bubbled key handler.
+    e.stopPropagation()
+    if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+      e.preventDefault()
+      void moveFolderWithKeyboard(folder, e.key === 'ArrowUp' ? -1 : 1)
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      toggleFolder(folder.id)
     }
   }
 
@@ -398,7 +558,15 @@
     const host = $hosts.find((h) => h.id === id)
     if (!host) return
 
-    if (e.key === 'Enter') {
+    if (
+      e.altKey &&
+      (e.key === 'ArrowUp' || e.key === 'ArrowDown') &&
+      (selectedRow === 'root:' + host.id ||
+        (selectedRow?.startsWith('folder-') && selectedRow.endsWith(':' + host.id)))
+    ) {
+      e.preventDefault()
+      void moveHostWithKeyboard(host, e.key === 'ArrowUp' ? -1 : 1)
+    } else if (e.key === 'Enter') {
       e.preventDefault()
       void onConnect(host)
     } else if (e.key === 'F2') {
@@ -461,6 +629,7 @@
               on:renameCommit={(e) => commitRename(host, e.detail)}
               on:renameCancel={() => (renamingHostId = null)}
               on:dragStart={(e) => onDragStart(host, e.detail)}
+              on:dragEnd={finishDrag}
             />
           {/each}
         {/if}
@@ -483,6 +652,7 @@
               on:contextmenu={(e) => openContextMenu(host, 'recent', e.detail)}
               on:favorite={() => setFavorite(host.id, !host.favorite)}
               on:dragStart={(e) => onDragStart(host, e.detail)}
+              on:dragEnd={finishDrag}
             />
           {/each}
         {/if}
@@ -512,10 +682,10 @@
         class="section-header-row"
         role="group"
         aria-label={$t('sidebar.folders')}
-        class:drag-over={dragOverFolderId === 'root'}
-        on:dragover|preventDefault={(event) => onDragOver('root', event)}
-        on:dragleave={() => (dragOverFolderId = null)}
-        on:drop|preventDefault={(e) => onDrop('root', e)}
+        class:drag-over={dropTarget?.kind === 'root' && dropTarget.surface === 'header'}
+        on:dragover={(e) => onRootDragOver('header', e)}
+        on:dragleave={onDragLeave}
+        on:drop={onRootDrop}
       >
         <button class="section-header" on:click={() => toggle('folders')}>
           <Icon name={sectionOpen.folders ? 'chevron-down' : 'chevron-right'} size={11} />
@@ -529,18 +699,27 @@
         {#each folderTree as { folder, depth } (folder.id)}
           {@const folderHosts = byFolder(folder.id)}
           {@const collapsed = collapsedFolders.has(folder.id)}
-          <!-- svelte-ignore a11y-no-static-element-interactions a11y-click-events-have-key-events -->
           <div
             class="folder-header"
-            class:drag-over={dragOverFolderId === folder.id}
+            class:drop-inside={dropTarget?.kind === 'folder' && dropTarget.id === folder.id && dropTarget.position === 'inside'}
+            class:drop-before={dropTarget?.kind === 'folder' && dropTarget.id === folder.id && dropTarget.position === 'before'}
+            class:drop-after={dropTarget?.kind === 'folder' && dropTarget.id === folder.id && dropTarget.position === 'after'}
+            class:dragging={draggedItem?.kind === 'folder' && draggedItem.id === folder.id}
             style="padding-left: {6 + depth * 14}px"
+            role="button"
+            tabindex="0"
+            aria-expanded={!collapsed}
+            aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
+            aria-describedby="sidebar-reorder-hint"
             draggable={true}
             on:click={() => toggleFolder(folder.id)}
+            on:keydown={(e) => onFolderKeydown(folder, e)}
             on:contextmenu|preventDefault|stopPropagation={(e) => openFolderContextMenu(folder, e)}
             on:dragstart|stopPropagation={(e) => onFolderDragStart(folder, e)}
-            on:dragover|preventDefault={(event) => onDragOver(folder.id, event)}
-            on:dragleave={() => (dragOverFolderId = null)}
-            on:drop|preventDefault={(e) => onDrop(folder.id, e)}
+            on:dragend={finishDrag}
+            on:dragover={(e) => onFolderDragOver(folder, e)}
+            on:dragleave={onDragLeave}
+            on:drop={(e) => onFolderDrop(folder, e)}
           >
             <Icon name={collapsed ? 'chevron-right' : 'chevron-down'} size={11} />
             <span class="folder-icon"><Icon name={folder.icon || 'folder'} size={12} /></span>
@@ -550,19 +729,31 @@
           {#if !collapsed}
             <div class="children" style="margin-left: {13 + depth * 14}px">
               {#each folderHosts as host (host.id)}
-                <HostListItem
-                  {host}
-                  selected={selectedRow === `folder-${folder.id}:${host.id}`}
-                  status={hostConnectionStatuses.get(host.id) ?? 'offline'}
-                  editing={renamingHostId === host.id}
-                  on:select={() => onSelect(host, `folder-${folder.id}`)}
-                  on:connect={() => onConnect(host)}
-                  on:contextmenu={(e) => openContextMenu(host, `folder-${folder.id}`, e.detail)}
-                  on:favorite={() => setFavorite(host.id, !host.favorite)}
-                  on:renameCommit={(e) => commitRename(host, e.detail)}
-                  on:renameCancel={() => (renamingHostId = null)}
-                  on:dragStart={(e) => onDragStart(host, e.detail)}
-                />
+                <div
+                  class="host-drop-target"
+                  role="presentation"
+                  class:drop-before={dropTarget?.kind === 'host' && dropTarget.id === host.id && dropTarget.position === 'before'}
+                  class:drop-after={dropTarget?.kind === 'host' && dropTarget.id === host.id && dropTarget.position === 'after'}
+                  on:dragover={(e) => onHostDragOver(host, folder.id, e)}
+                  on:dragleave|stopPropagation={onDragLeave}
+                  on:drop={(e) => onHostDrop(host, folder.id, e)}
+                >
+                  <HostListItem
+                    {host}
+                    selected={selectedRow === `folder-${folder.id}:${host.id}`}
+                    status={hostConnectionStatuses.get(host.id) ?? 'offline'}
+                    editing={renamingHostId === host.id}
+                    reorderable={true}
+                    on:select={() => onSelect(host, `folder-${folder.id}`)}
+                    on:connect={() => onConnect(host)}
+                    on:contextmenu={(e) => openContextMenu(host, `folder-${folder.id}`, e.detail)}
+                    on:favorite={() => setFavorite(host.id, !host.favorite)}
+                    on:renameCommit={(e) => commitRename(host, e.detail)}
+                    on:renameCancel={() => (renamingHostId = null)}
+                    on:dragStart={(e) => onDragStart(host, e.detail)}
+                    on:dragEnd={finishDrag}
+                  />
+                </div>
               {/each}
               {#if folderHosts.length === 0}
                 <div class="empty-hint">{$t('sidebar.dropHostsHere')}</div>
@@ -576,30 +767,45 @@
         <!-- svelte-ignore a11y-no-static-element-interactions -->
         <div
           class="root-hosts"
-          class:drag-over={dragOverFolderId === 'root'}
-          on:dragover|preventDefault={(event) => onDragOver('root', event)}
-          on:dragleave={() => (dragOverFolderId = null)}
-          on:drop|preventDefault={(e) => onDrop('root', e)}
+          class:drag-over={dropTarget?.kind === 'root' && dropTarget.surface === 'list'}
+          on:dragover={(e) => onRootDragOver('list', e)}
+          on:dragleave={onDragLeave}
+          on:drop={onRootDrop}
         >
           {#each unfoldered as host (host.id)}
-            <HostListItem
-              {host}
-              selected={selectedRow === `root:${host.id}`}
-              status={hostConnectionStatuses.get(host.id) ?? 'offline'}
-              editing={renamingHostId === host.id}
-              on:select={() => onSelect(host, 'root')}
-              on:connect={() => onConnect(host)}
-              on:contextmenu={(e) => openContextMenu(host, 'root', e.detail)}
-              on:favorite={() => setFavorite(host.id, !host.favorite)}
-              on:renameCommit={(e) => commitRename(host, e.detail)}
-              on:renameCancel={() => (renamingHostId = null)}
-              on:dragStart={(e) => onDragStart(host, e.detail)}
-            />
+            <div
+              class="host-drop-target"
+              role="presentation"
+              class:drop-before={dropTarget?.kind === 'host' && dropTarget.id === host.id && dropTarget.position === 'before'}
+              class:drop-after={dropTarget?.kind === 'host' && dropTarget.id === host.id && dropTarget.position === 'after'}
+              on:dragover={(e) => onHostDragOver(host, null, e)}
+              on:dragleave|stopPropagation={onDragLeave}
+              on:drop={(e) => onHostDrop(host, null, e)}
+            >
+              <HostListItem
+                {host}
+                selected={selectedRow === `root:${host.id}`}
+                status={hostConnectionStatuses.get(host.id) ?? 'offline'}
+                editing={renamingHostId === host.id}
+                reorderable={true}
+                on:select={() => onSelect(host, 'root')}
+                on:connect={() => onConnect(host)}
+                on:contextmenu={(e) => openContextMenu(host, 'root', e.detail)}
+                on:favorite={() => setFavorite(host.id, !host.favorite)}
+                on:renameCommit={(e) => commitRename(host, e.detail)}
+                on:renameCancel={() => (renamingHostId = null)}
+                on:dragStart={(e) => onDragStart(host, e.detail)}
+                on:dragEnd={finishDrag}
+              />
+            </div>
           {/each}
         </div>
       {/if}
     </div>
   {/if}
+
+  <div id="sidebar-reorder-hint" class="sr-only">{$t('sidebar.reorder.hint')}</div>
+  <div class="sr-only" aria-live="polite">{reorderAnnouncement}</div>
 
   <button
     type="button"
@@ -764,6 +970,7 @@
   }
 
   .folder-header {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 5px;
@@ -778,6 +985,10 @@
 
   .folder-header:hover {
     background: var(--hover-bg);
+  }
+
+  .folder-header.dragging {
+    opacity: 0.55;
   }
 
   .folder-name {
@@ -818,9 +1029,39 @@
     padding: 2px 6px;
   }
 
-  .folder-header.drag-over {
+  .folder-header.drop-inside {
     background: var(--active-bg);
     outline: 1px dashed var(--accent-color);
+    outline-offset: -1px;
+  }
+
+  .host-drop-target {
+    position: relative;
+  }
+
+  .host-drop-target.drop-before::before,
+  .host-drop-target.drop-after::after,
+  .folder-header.drop-before::before,
+  .folder-header.drop-after::after {
+    content: '';
+    position: absolute;
+    z-index: 3;
+    left: 4px;
+    right: 4px;
+    height: 2px;
+    border-radius: 1px;
+    background: var(--accent-color);
+    pointer-events: none;
+  }
+
+  .host-drop-target.drop-before::before,
+  .folder-header.drop-before::before {
+    top: -1px;
+  }
+
+  .host-drop-target.drop-after::after,
+  .folder-header.drop-after::after {
+    bottom: -1px;
   }
 
   .root-hosts {
@@ -858,6 +1099,18 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
   }
 
   .empty-title {

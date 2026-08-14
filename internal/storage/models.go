@@ -53,6 +53,7 @@ type Host struct {
 	LoginScript     string       `json:"loginScript"`
 	ControlPanelURL string       `json:"controlPanelUrl"`
 	Tags            []string     `json:"tags"`
+	SortOrder       int          `json:"sortOrder"`
 	LastUsedAt      *string      `json:"lastUsedAt,omitempty"`
 	CreatedAt       string       `json:"createdAt"`
 	UpdatedAt       string       `json:"updatedAt"`
@@ -60,10 +61,11 @@ type Host struct {
 
 // Folder groups hosts in the sidebar tree.
 type Folder struct {
-	ID       int64  `json:"id"`
-	Name     string `json:"name"`
-	Icon     string `json:"icon"`
-	ParentID *int64 `json:"parentId,omitempty"`
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
+	Icon      string `json:"icon"`
+	ParentID  *int64 `json:"parentId,omitempty"`
+	SortOrder int    `json:"sortOrder"`
 }
 
 // HostInput is the payload for creating/updating a Host from the UI.

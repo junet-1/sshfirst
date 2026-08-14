@@ -121,6 +121,7 @@ export class Folder {
     "name": string;
     "icon": string;
     "parentId"?: number | null;
+    "sortOrder": number;
 
     /** Creates a new Folder instance. */
     constructor($$source: Partial<Folder> = {}) {
@@ -132,6 +133,9 @@ export class Folder {
         }
         if (!("icon" in $$source)) {
             this["icon"] = "";
+        }
+        if (!("sortOrder" in $$source)) {
+            this["sortOrder"] = 0;
         }
 
         Object.assign(this, $$source);
@@ -292,6 +296,7 @@ export class Host {
     "loginScript": string;
     "controlPanelUrl": string;
     "tags": string[];
+    "sortOrder": number;
     "lastUsedAt"?: string | null;
     "createdAt": string;
     "updatedAt": string;
@@ -348,6 +353,9 @@ export class Host {
         }
         if (!("tags" in $$source)) {
             this["tags"] = [];
+        }
+        if (!("sortOrder" in $$source)) {
+            this["sortOrder"] = 0;
         }
         if (!("createdAt" in $$source)) {
             this["createdAt"] = "";

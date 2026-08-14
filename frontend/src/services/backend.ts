@@ -36,6 +36,10 @@ export const backend = {
     Backend.MoveHostToFolder(hostId, folderId as any),
   moveFolder: (id: number, parentId: number | null): Promise<void> =>
     Backend.MoveFolder(id, parentId as any),
+  reorderHost: (hostId: number, folderId: number | null, targetHostId: number | null, before: boolean): Promise<void> =>
+    Backend.ReorderHost(hostId, folderId as any, targetHostId as any, before),
+  reorderFolder: (folderId: number, parentId: number | null, targetFolderId: number | null, before: boolean): Promise<void> =>
+    Backend.ReorderFolder(folderId, parentId as any, targetFolderId as any, before),
 
   importSSHConfig: (): Promise<ImportResult> => Backend.ImportSSHConfig() as unknown as Promise<ImportResult>,
 
@@ -82,6 +86,10 @@ export const backend = {
   writeTerminalInput: (tabId: string, data: string): Promise<void> => Backend.WriteTerminalInput(tabId, data),
   resizeTerminal: (tabId: string, cols: number, rows: number): Promise<void> =>
     Backend.ResizeTerminal(tabId, cols, rows),
+  startTerminalOutput: (tabId: string): Promise<void> => Backend.StartTerminalOutput(tabId),
+  pauseTerminalOutput: (tabId: string): Promise<void> => Backend.PauseTerminalOutput(tabId),
+  acknowledgeTerminalOutput: (tabId: string, sessionGeneration: string, sequence: number): Promise<void> =>
+    Backend.AcknowledgeTerminalOutput(tabId, sessionGeneration, sequence),
   listSFTP: (tabId: string, remotePath: string): Promise<SFTPDirectory> =>
     Backend.ListSFTP(tabId, remotePath) as unknown as Promise<SFTPDirectory>,
   uploadSFTP: (tabId: string, localPath: string, remoteDir: string): Promise<SFTPEntry> =>

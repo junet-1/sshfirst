@@ -20,6 +20,7 @@
   import ReconnectOverlay from './ReconnectOverlay.svelte'
   import TerminalSearchBar from './TerminalSearchBar.svelte'
   import type { ContextMenuItem } from '../types/contextMenu'
+  import { TerminalOutputFlow } from '../lib/terminalOutput'
 
   export let tabId: string
   // visible: the pane is part of the current layout (in tabbed mode, the soloed
@@ -57,6 +58,10 @@
   let searchResultCount = 0
   let handledSearchRequest = 0
   let searchResultsDisposable: { dispose(): void } | undefined
+  let outputFlow: TerminalOutputFlow | undefined
+  let documentVisible = document.visibilityState !== 'hidden'
+  let lastReportedCols = 0
+  let lastReportedRows = 0
   // True once this pane's session has ended or the component is torn down.
   // Guards every backend call so we never resize/write to a tab the backend
   // has already dropped (which otherwise floods unhandled rejections).
@@ -76,12 +81,17 @@
   }
 
   function fit(): void {
-    if (inactive || !fitAddon || !term) return
+    if (inactive || !visible || !documentVisible || !fitAddon || !term || !container) return
+    const bounds = container.getBoundingClientRect()
+    if (bounds.width <= 0 || bounds.height <= 0) return
     try {
       fitAddon.fit()
     } catch {
       return // container not laid out yet (e.g. still hidden behind an inactive tab)
     }
+    if (term.cols === lastReportedCols && term.rows === lastReportedRows) return
+    lastReportedCols = term.cols
+    lastReportedRows = term.rows
     terminalSizes.update((all) => ({ ...all, [tabId]: { cols: term!.cols, rows: term!.rows } }))
     // Fire-and-forget: a resize racing against a just-closed tab is expected
     // and harmless, so swallow the rejection rather than leaking it.
@@ -95,6 +105,10 @@
   // maximise, so this window-level listener guarantees a horizontal reflow.
   function scheduleFit(): void {
     if (refitFrame) cancelAnimationFrame(refitFrame)
+    if (!visible || !documentVisible || inactive) {
+      refitFrame = 0
+      return
+    }
     refitFrame = requestAnimationFrame(() => {
       refitFrame = 0
       if (visible) fit()
@@ -103,17 +117,35 @@
 
   function stopSession(): void {
     inactive = true
+    if (refitFrame) cancelAnimationFrame(refitFrame)
+    refitFrame = 0
     resizeObserver?.disconnect()
     resizeObserver = undefined
+  }
+
+  function observeSize(): void {
+    if (resizeObserver || inactive || !documentVisible || !container) return
+    resizeObserver = new ResizeObserver(() => scheduleFit())
+    resizeObserver.observe(container)
   }
 
   function resumeSession(): void {
     if (!term || !container) return
     inactive = false
-    if (!resizeObserver) {
-      resizeObserver = new ResizeObserver(() => scheduleFit())
-      resizeObserver.observe(container)
+    observeSize()
+    scheduleFit()
+  }
+
+  function handleVisibilityChange(): void {
+    documentVisible = document.visibilityState !== 'hidden'
+    if (!documentVisible) {
+      if (refitFrame) cancelAnimationFrame(refitFrame)
+      refitFrame = 0
+      resizeObserver?.disconnect()
+      resizeObserver = undefined
+      return
     }
+    observeSize()
     scheduleFit()
   }
 
@@ -424,13 +456,26 @@
       void backend.logFrontendError(`terminal init failed for tab ${tabId}: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}`)
     }
 
+    outputFlow = new TerminalOutputFlow(
+      (data, parsed) => {
+        if (term) term.write(data, parsed)
+        else parsed()
+      },
+      (evt) => backend.acknowledgeTerminalOutput(tabId, evt.sessionGeneration, evt.sequence),
+      (error) => {
+        void backend.logFrontendError(
+          `terminal output flow failed for tab ${tabId}: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`
+        )
+      }
+    )
+
     const offData = on<TerminalDataEvent>('terminal:data', (evt) => {
       if (evt.tabId !== tabId) return
       // Only mark unread/bell attention for off-screen panes. A tiled (visible)
       // pane is already in view, so its redraw output — e.g. during a resize —
       // must not light the tab up as a notification.
       if (!visible) markTabActivity(tabId, evt.data.includes('\x07'))
-      term?.write(evt.data)
+      outputFlow?.enqueue(evt)
     })
     const offClosed = on<TerminalClosedEvent>('terminal:closed', (evt) => {
       if (evt.tabId !== tabId) return
@@ -439,10 +484,17 @@
       stopSession() // session is gone on the backend — stop resizing/writing to it
     })
 
-    resizeObserver = new ResizeObserver(() => fit())
-    resizeObserver.observe(container)
+    observeSize()
+    void backend.startTerminalOutput(tabId).catch((error) => {
+      void backend.logFrontendError(
+        `terminal output start failed for tab ${tabId}: ${error instanceof Error ? error.message : String(error)}`
+      )
+    })
 
     return () => {
+      outputFlow?.dispose()
+      outputFlow = undefined
+      void backend.pauseTerminalOutput(tabId).catch(() => {})
       stopSession()
       offData()
       offClosed()
@@ -481,6 +533,7 @@
 </script>
 
 <svelte:window on:resize={scheduleFit} />
+<svelte:document on:visibilitychange={handleVisibilityChange} />
 
 <div class="terminal-layer" class:visible class:focused aria-hidden={!visible} style={layerStyle}>
   <!-- svelte-ignore a11y-no-static-element-interactions -->

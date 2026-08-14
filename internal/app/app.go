@@ -48,6 +48,7 @@ type App struct {
 	mu          sync.Mutex
 	connections map[string]*connectionState
 	tabs        map[string]*tabState
+	output      *terminalOutputBroker
 
 	pending   *pendingPrompts
 	transfers *transferManager
@@ -93,6 +94,7 @@ func New(migrations fs.FS, trayIcon ...[]byte) *App {
 		toolWindows: make(map[string]*application.WebviewWindow),
 		geom:        newGeometryStore(),
 	}
+	a.output = newTerminalOutputBroker(a.dispatchTerminalOutput)
 	if len(trayIcon) > 0 {
 		a.trayIcon = append([]byte(nil), trayIcon[0]...)
 	}
@@ -151,6 +153,7 @@ func (a *App) ServiceStartup(ctx context.Context, _ application.ServiceOptions) 
 //wails:ignore
 func (a *App) ServiceShutdown() error {
 	a.stopTray()
+	a.output.close()
 
 	a.mu.Lock()
 	connections := make([]*connectionState, 0, len(a.connections))
@@ -175,6 +178,17 @@ func (a *App) emit(event string, data any) {
 		return
 	}
 	a.ui.Event.Emit(event, data)
+}
+
+// dispatchTerminalOutput deliberately targets only the main window. Terminal
+// batches are high-frequency and irrelevant to tool windows; using the global
+// event manager would create a goroutine and synchronous main-thread ExecJS
+// call for every open native window.
+func (a *App) dispatchTerminalOutput(event TerminalDataEvent) {
+	if a.mainWindow == nil {
+		return
+	}
+	a.mainWindow.DispatchWailsEvent(&application.CustomEvent{Name: "terminal:data", Data: event})
 }
 
 func (a *App) requireStore() error {
