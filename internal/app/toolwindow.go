@@ -19,11 +19,18 @@ type toolWindowSpec struct {
 // height is only a first-paint estimate: once the dialog mounts it measures its
 // content and calls the runtime to fit the window (see Modal.svelte). minHeight
 // is kept low so that content-fit shrink is not clamped back up by GTK.
+//
+// Every window must stay resizable for that to work at all: Wails implements
+// SetSize on GTK4 as gtk_window_set_default_size, which a window with
+// gtk_window_set_resizable(FALSE) ignores. A fixed window therefore keeps its
+// first-paint estimate forever, and any viewport smaller than the estimate
+// assumed — a HiDPI webview zoom shrinks it, for instance — leaves the dialog
+// scrolling inside a window that refuses to grow.
 var toolWindowSpecs = map[string]toolWindowSpec{
 	"host":        {title: "Host — SSH First", width: 780, height: 720, minWidth: 620, minHeight: 400, resizable: true},
 	"folder":      {title: "Folder — SSH First", width: 440, height: 360, minWidth: 390, minHeight: 240, resizable: true},
 	"settings":    {title: "Preferences — SSH First", width: 430, height: 300, minWidth: 390, minHeight: 200, resizable: true},
-	"about":       {title: "About SSH First", width: 460, height: 380, minWidth: 420, minHeight: 280, resizable: false},
+	"about":       {title: "About SSH First", width: 460, height: 380, minWidth: 420, minHeight: 280, resizable: true},
 	"snippets":    {title: "Snippets — SSH First", width: 600, height: 620, minWidth: 500, minHeight: 360, resizable: true},
 	"credentials": {title: "Credentials — SSH First", width: 520, height: 560, minWidth: 440, minHeight: 320, resizable: true},
 	"transfer":    {title: "Transfer — SSH First", width: 700, height: 680, minWidth: 580, minHeight: 380, resizable: true},

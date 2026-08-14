@@ -431,7 +431,7 @@ const en: Dictionary = {
   'settings.close': 'Close',
   'about.title': 'About SSH First',
   'about.version': 'Version {version}',
-  'about.description': 'A focused SSH and SFTP workspace for Linux.',
+  'about.description': 'A focused SSH and SFTP workspace.',
   'about.license': 'License',
   'about.close': 'Close'
 }
@@ -861,7 +861,7 @@ const de: Dictionary = {
   'settings.close': 'Schließen',
   'about.title': 'Über SSH First',
   'about.version': 'Version {version}',
-  'about.description': 'Ein fokussierter SSH- und SFTP-Arbeitsbereich für Linux.',
+  'about.description': 'Ein fokussierter SSH- und SFTP-Arbeitsbereich.',
   'about.license': 'Lizenz',
   'about.close': 'Schließen'
 }

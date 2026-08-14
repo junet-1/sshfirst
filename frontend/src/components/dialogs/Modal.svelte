@@ -18,16 +18,30 @@
     if (dedicatedWindow) void fitWindow()
   })
 
+  const nextFrame = (): Promise<void> =>
+    new Promise((resolve) => requestAnimationFrame(() => resolve()))
+
   // In a dedicated tool window the panel fills the window, so measure the
   // natural (unstretched) content instead: body.scrollHeight reports the real
   // content height whether it overflows or leaves slack, and the footer keeps
   // its intrinsic height. Resize the window to that once the layout settles.
+  //
+  // Repeat until it actually fits. The window is sized in its own pixels while
+  // the measurement is in CSS pixels, and the two only agree at zoom 1: on a
+  // HiDPI webview a single resize by the measured difference lands short, and
+  // the dialog would keep a scrollbar. Iterating converges without having to
+  // know the factor, and costs nothing when the first pass already fits.
   async function fitWindow(): Promise<void> {
     await tick()
     await document.fonts?.ready
-    await new Promise((resolve) => requestAnimationFrame(() => resolve(null)))
-    const desired = bodyEl.scrollHeight + (footerEl?.offsetHeight ?? 0)
-    if (desired > 0) await fitCurrentWindowHeight(desired)
+    await nextFrame()
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const desired = bodyEl.scrollHeight + (footerEl?.offsetHeight ?? 0)
+      if (desired <= 0) return
+      if (Math.abs(desired - window.innerHeight) <= 2) return
+      await fitCurrentWindowHeight(desired)
+      await nextFrame()
+    }
   }
 
   function onKeydown(e: KeyboardEvent): void {
