@@ -8,6 +8,12 @@ export const MAX_TERMINAL_FONT_SIZE = 24
 
 export const sidebarVisible = writable(true)
 export const inspectorVisible = writable(false)
+// How many context menus are currently open. Native panel views (rendered as
+// real widgets above the page) have to hide while one is, or the menu would be
+// drawn underneath them. Kept as a counter rather than a flag so nested or
+// rapidly replaced menus cannot leave it stuck.
+export const openContextMenus = writable(0)
+
 export const commandPaletteOpen = writable(false)
 export const settingsOpen = writable(false)
 export const aboutOpen = writable(false)

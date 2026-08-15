@@ -64,6 +64,94 @@ static GtkWidget *pv_install(GtkWindow *window, GtkWidget **shell_out) {
     return overlay;
 }
 
+
+// A panel that opens a window — target=_blank, window.open, and every OAuth
+// flow that authenticates in a popup — gets a real one. Without this the
+// request is dropped silently and such a login simply never completes.
+//
+// The popup has to be created from the panel's own view so the two stay
+// related: that is what keeps window.opener working, which is how the popup
+// hands its result back.
+static void pv_popup_ready(WebKitWebView *popup, gpointer user_data) {
+    GtkWidget *window = gtk_window_new();
+    gtk_window_set_title(GTK_WINDOW(window), "SSH First — Web Panel");
+
+    WebKitWindowProperties *props = webkit_web_view_get_window_properties(popup);
+    int width = 900, height = 700;
+    if (props != NULL) {
+        GdkRectangle geometry;
+        webkit_window_properties_get_geometry(props, &geometry);
+        if (geometry.width > 100) width = geometry.width;
+        if (geometry.height > 100) height = geometry.height;
+    }
+    gtk_window_set_default_size(GTK_WINDOW(window), width, height);
+    gtk_window_set_child(GTK_WINDOW(window), GTK_WIDGET(popup));
+    gtk_window_present(GTK_WINDOW(window));
+}
+
+static void pv_popup_close(WebKitWebView *popup, gpointer user_data) {
+    GtkWidget *root = GTK_WIDGET(gtk_widget_get_root(GTK_WIDGET(popup)));
+    if (GTK_IS_WINDOW(root)) {
+        gtk_window_destroy(GTK_WINDOW(root));
+    }
+}
+
+static GtkWidget *pv_on_create(WebKitWebView *view, WebKitNavigationAction *action, gpointer user_data) {
+    // WebKitGTK 6.0 dropped the dedicated constructor for this; the
+    // "related-view" construct property is what is left, and it is what keeps
+    // window.opener intact between the popup and the panel that opened it.
+    WebKitWebView *popup = WEBKIT_WEB_VIEW(
+        g_object_new(WEBKIT_TYPE_WEB_VIEW, "related-view", view, NULL));
+    g_signal_connect(popup, "ready-to-show", G_CALLBACK(pv_popup_ready), NULL);
+    g_signal_connect(popup, "close", G_CALLBACK(pv_popup_close), NULL);
+    return GTK_WIDGET(popup);
+}
+
+// Without this a failed load leaves an empty rectangle and no explanation. The
+// page is rendered for the address that failed, so a reload retries the panel
+// rather than the error page.
+static void pv_show_error(WebKitWebView *view, const char *failing_uri, const char *headline, const char *detail) {
+    char *safe_uri = g_markup_escape_text(failing_uri ? failing_uri : "", -1);
+    char *safe_detail = g_markup_escape_text(detail ? detail : "", -1);
+    char *html = g_strdup_printf(
+        "<!doctype html><meta charset='utf-8'>"
+        "<style>html{height:100%%}body{margin:0;height:100%%;display:flex;align-items:center;"
+        "justify-content:center;background:#1e2022;color:#c8ccd0;"
+        "font:13px 'Noto Sans',Cantarell,system-ui,sans-serif}"
+        "div{max-width:32em;padding:0 2em;text-align:center}"
+        "h1{font-size:15px;font-weight:600;color:#eff0f1;margin:0 0 .6em}"
+        "p{margin:.4em 0;line-height:1.5}code{color:#8f979e;word-break:break-all}</style>"
+        "<div><h1>%s</h1><p>%s</p><p><code>%s</code></p></div>",
+        headline, safe_detail, safe_uri);
+    webkit_web_view_load_alternate_html(view, html, failing_uri, NULL);
+    g_free(html);
+    g_free(safe_uri);
+    g_free(safe_detail);
+}
+
+static gboolean pv_on_load_failed(WebKitWebView *view, WebKitLoadEvent event,
+                                  gchar *failing_uri, GError *error, gpointer user_data) {
+    // Cancelled loads are the normal consequence of navigating away.
+    if (g_error_matches(error, WEBKIT_NETWORK_ERROR, WEBKIT_NETWORK_ERROR_CANCELLED)) {
+        return FALSE;
+    }
+    pv_show_error(view, failing_uri, "This panel did not load", error ? error->message : "Unknown error");
+    return TRUE;
+}
+
+static gboolean pv_on_tls_error(WebKitWebView *view, gchar *failing_uri,
+                                GTlsCertificate *certificate, GTlsCertificateFlags errors,
+                                gpointer user_data) {
+    // Deliberately not accepted automatically. Self-signed certificates are
+    // normal for homelab panels, but silently trusting whatever answers would
+    // throw away the only protection the connection has.
+    pv_show_error(view, failing_uri, "Certificate not trusted",
+                  "The panel's TLS certificate could not be verified. If it is self-signed, "
+                  "add it to your system trust store — or open the panel in your browser and "
+                  "accept it there.");
+    return TRUE;
+}
+
 static WebKitWebView *pv_new_view(GtkWidget *overlay, const char *uri, const char *script) {
     WebKitWebView *view = WEBKIT_WEB_VIEW(webkit_web_view_new());
 
@@ -83,6 +171,10 @@ static WebKitWebView *pv_new_view(GtkWidget *overlay, const char *uri, const cha
             webkit_user_script_unref(user);
         }
     }
+
+    g_signal_connect(view, "create", G_CALLBACK(pv_on_create), NULL);
+    g_signal_connect(view, "load-failed", G_CALLBACK(pv_on_load_failed), NULL);
+    g_signal_connect(view, "load-failed-with-tls-errors", G_CALLBACK(pv_on_tls_error), NULL);
 
     GtkWidget *widget = GTK_WIDGET(view);
     // Anchored top-left so the overlay honours the margins as absolute

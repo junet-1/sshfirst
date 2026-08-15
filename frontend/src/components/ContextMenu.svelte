@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { createEventDispatcher, onMount } from 'svelte'
+  import { createEventDispatcher, onDestroy, onMount } from 'svelte'
   import type { ContextMenuItem } from '../types/contextMenu'
+  import { openContextMenus } from '../stores/ui'
 
   export let x: number
   export let y: number
@@ -8,6 +9,11 @@
 
   const dispatch = createEventDispatcher<{ select: string; close: void }>()
   let menuEl: HTMLDivElement
+
+  // Announced globally so panel views, which are native widgets stacked above
+  // the page, get out of the way while this menu is on screen.
+  openContextMenus.update((n) => n + 1)
+  onDestroy(() => openContextMenus.update((n) => Math.max(0, n - 1)))
 
   onMount(() => {
     const rect = menuEl.getBoundingClientRect()

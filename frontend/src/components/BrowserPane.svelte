@@ -6,7 +6,7 @@
   import { mayAutofill, normalizePanelUrl } from '../lib/panelUrl'
   import type { Rect } from '../lib/layoutTree'
   import { onDestroy, onMount, tick } from 'svelte'
-  import { commandPaletteOpen } from '../stores/ui'
+  import { commandPaletteOpen, openContextMenus } from '../stores/ui'
   import { hostKeyQueue, keyboardInteractiveQueue, passphraseQueue, passwordQueue } from '../stores/prompts'
   import { confirmRequest } from '../stores/confirm'
   import { workspaceDialogOpen } from '../stores/workspaces'
@@ -135,6 +135,7 @@
   // behind an open panel would be worse than a moment of blank pane.
   $: modalOpen =
     $commandPaletteOpen ||
+    $openContextMenus > 0 ||
     $hostKeyQueue.length > 0 ||
     $passwordQueue.length > 0 ||
     $passphraseQueue.length > 0 ||
