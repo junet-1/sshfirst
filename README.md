@@ -187,10 +187,11 @@ Passwords and passphrases you choose to save go into your desktop's keyring
 | Shortcut | Action |
 | --- | --- |
 | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Space</kbd> | Command palette |
-| <kbd>Ctrl</kbd>+<kbd>K</kbd> | Search hosts |
-| <kbd>Ctrl</kbd>+<kbd>N</kbd> | New host |
-| <kbd>Ctrl</kbd>+<kbd>T</kbd> | New tab |
-| <kbd>Ctrl</kbd>+<kbd>W</kbd> | Close tab |
+| <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>K</kbd> | Search hosts |
+| <kbd>Ctrl</kbd>+<kbd>K</kbd> | Search hosts (outside the terminal) |
+| <kbd>Ctrl</kbd>+<kbd>N</kbd> | New host (outside the terminal) |
+| <kbd>Ctrl</kbd>+<kbd>T</kbd> | New tab (outside the terminal) |
+| <kbd>Ctrl</kbd>+<kbd>W</kbd> | Close tab (outside the terminal) |
 | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd> | Reopen closed tab |
 | <kbd>Ctrl</kbd>+<kbd>Tab</kbd> | Next tab (<kbd>Shift</kbd> for previous) |
 | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>W</kbd> | Disconnect current connection |
@@ -199,6 +200,12 @@ Passwords and passphrases you choose to save go into your desktop's keyring
 | <kbd>Ctrl</kbd>+<kbd>+</kbd> / <kbd>-</kbd> / <kbd>0</kbd> | Terminal font size |
 | <kbd>Ctrl</kbd>+<kbd>,</kbd> | Settings |
 | <kbd>F11</kbd> | Fullscreen |
+
+While a terminal has focus, plain <kbd>Ctrl</kbd>+<kbd>letter</kbd> shortcuts
+are left to the shell — <kbd>Ctrl</kbd>+<kbd>K</kbd> cuts a line in nano,
+<kbd>Ctrl</kbd>+<kbd>W</kbd> searches there and deletes a word in readline. The
+<kbd>Ctrl</kbd>+<kbd>Shift</kbd> shortcuts work everywhere, including inside a
+terminal.
 
 ## Security
 

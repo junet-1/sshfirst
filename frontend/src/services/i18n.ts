@@ -39,7 +39,7 @@ const en: Dictionary = {
   'menu.help': 'Help',
   'menu.help.about': 'About SSH First',
 
-  'sidebar.search.placeholder': 'Search hosts… (Ctrl+K)',
+  'sidebar.search.placeholder': 'Search hosts… (Ctrl+Shift+K)',
   'sidebar.favorites': 'Favorites',
   'sidebar.recent': 'Recent',
   'sidebar.folders': 'Folders',
@@ -472,7 +472,7 @@ const de: Dictionary = {
   'menu.help': 'Hilfe',
   'menu.help.about': 'Über SSH First',
 
-  'sidebar.search.placeholder': 'Hosts durchsuchen… (Strg+K)',
+  'sidebar.search.placeholder': 'Hosts durchsuchen… (Strg+Umschalt+K)',
   'sidebar.favorites': 'Favoriten',
   'sidebar.recent': 'Zuletzt verwendet',
   'sidebar.folders': 'Ordner',

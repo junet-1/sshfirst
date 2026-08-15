@@ -27,6 +27,10 @@ export function shortcutLabel(label: string): string {
 export function toMacShortcut(label: string): string {
   return label
     .replace(/\bCtrl\s*\+\s*|\bCtrl\s+/g, '⌘')
+    // The German dictionary spells the modifiers out; without these two the
+    // labels would still read "Strg" on a Mac.
+    .replace(/\bStrg\s*\+\s*|\bStrg\s+/g, '⌘')
+    .replace(/\bUmschalt\s*\+\s*|\bUmschalt\s+/g, '⇧')
     .replace(/\bShift\s*\+\s*|\bShift\s+/g, '⇧')
     .replace(/\bAlt\s*\+\s*|\bAlt\s+/g, '⌥')
     .replace(/\bEnter\b/g, '⏎')

@@ -342,9 +342,25 @@
     return e.ctrlKey || e.metaKey
   }
 
+  // Plain Ctrl+<letter> belongs to whatever runs in the terminal: Ctrl+K cuts a
+  // line in nano, Ctrl+W searches there and deletes a word in readline, Ctrl+N
+  // and Ctrl+T are history and transpose. This listener runs in the capture
+  // phase, so a shortcut it claims never reaches xterm at all — the conflicting
+  // ones therefore have to stand down while a terminal has focus rather than
+  // just skipping preventDefault.
+  //
+  // Application shortcuts keep their Ctrl+Shift form, which no shell binding
+  // uses; the non-letter ones (Ctrl+Tab, Ctrl+comma, zoom) collide with nothing
+  // and stay available everywhere.
+  function terminalHasFocus(): boolean {
+    const active = document.activeElement
+    return active instanceof Element && active.closest('.xterm') !== null
+  }
+
   function onGlobalKeydown(e: KeyboardEvent): void {
     if (currentToolWindowKind) return
     const key = e.key.toLowerCase()
+    const shellOwnsLetter = terminalHasFocus() && !e.shiftKey
 
     if (isCtrl(e) && (key === '+' || key === '=' || e.code === 'NumpadAdd')) {
       e.preventDefault()
@@ -383,11 +399,11 @@
       e.preventDefault()
       e.stopPropagation()
       void reopenLastClosedTab()
-    } else if (isCtrl(e) && key === 'k') {
+    } else if (isCtrl(e) && key === 'k' && (e.shiftKey || !shellOwnsLetter)) {
       e.preventDefault()
       e.stopPropagation()
       sidebar?.focusSearch()
-    } else if (isCtrl(e) && key === 'n') {
+    } else if (isCtrl(e) && key === 'n' && !shellOwnsLetter) {
       e.preventDefault()
       e.stopPropagation()
       hostDialog.set({ open: true, editingId: null })
@@ -404,12 +420,12 @@
       e.stopPropagation()
       const id = get(activeConnectionId)
       if (id) void disconnectConnection(id)
-    } else if (isCtrl(e) && key === 'w') {
+    } else if (isCtrl(e) && key === 'w' && !shellOwnsLetter) {
       e.preventDefault()
       e.stopPropagation()
       const id = get(activeTabId)
       if (id) void closeTab(id)
-    } else if (isCtrl(e) && key === 't') {
+    } else if (isCtrl(e) && key === 't' && !shellOwnsLetter) {
       e.preventDefault()
       e.stopPropagation()
       openNewTab()

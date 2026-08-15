@@ -10,6 +10,11 @@ describe('toMacShortcut', () => {
     expect(toMacShortcut('Ctrl+Enter to paste')).toBe('⌘⏎ to paste')
   })
 
+  it('also rewrites the German modifier names', () => {
+    expect(toMacShortcut('Strg+Umschalt+K')).toBe('⌘⇧K')
+    expect(toMacShortcut('Hosts durchsuchen… (Strg+Umschalt+K)')).toBe('Hosts durchsuchen… (⌘⇧K)')
+  })
+
   it('leaves surrounding prose and unrelated words alone', () => {
     expect(toMacShortcut('Search hosts… (Ctrl+K)')).toBe('Search hosts… (⌘K)')
     // "Control" and "Shifting" must not be mistaken for modifier names.
