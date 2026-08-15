@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	xssh "golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/knownhosts"
 )
 
 func newTestPublicKey(t *testing.T) xssh.PublicKey {
@@ -212,5 +213,51 @@ func TestPersistHostKey_ReplacesEntriesOfEveryAlgorithm(t *testing.T) {
 	}
 	if !strings.Contains(string(contents), rsaKey.Type()) {
 		t.Fatalf("expected the newly accepted key to be the one left, got:\n%s", contents)
+	}
+}
+
+// Transfers are blocked unless the host key was verified interactively first,
+// so a false negative here would break rsync for hosts the user has long since
+// approved. The port handling is the fiddly part: known_hosts writes a bare
+// hostname for port 22 and a bracketed [host]:port for anything else, and the
+// caller passes 0 for "default".
+func TestIsHostKnown(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "known_hosts")
+	key := newTestPublicKey(t)
+
+	// Exactly what knownHostsCallback persists after the user approves.
+	if err := persistHostKey(path, knownhosts.Normalize("example.com:22"), key); err != nil {
+		t.Fatalf("persistHostKey: %v", err)
+	}
+	if err := persistHostKey(path, knownhosts.Normalize("odd.example:2222"), key); err != nil {
+		t.Fatalf("persistHostKey: %v", err)
+	}
+
+	cases := []struct {
+		host string
+		port int
+		want bool
+	}{
+		{"example.com", 22, true},
+		{"example.com", 0, true}, // 0 means "default", i.e. 22
+		{"example.com", 2222, false},
+		{"odd.example", 2222, true},
+		{"odd.example", 22, false},
+		{"unseen.example", 22, false},
+	}
+	for _, tc := range cases {
+		got, err := IsHostKnown(path, tc.host, tc.port)
+		if err != nil {
+			t.Fatalf("IsHostKnown(%s:%d): %v", tc.host, tc.port, err)
+		}
+		if got != tc.want {
+			t.Errorf("IsHostKnown(%s:%d) = %v, want %v", tc.host, tc.port, got, tc.want)
+		}
+	}
+
+	missing, err := IsHostKnown(filepath.Join(dir, "does-not-exist"), "example.com", 22)
+	if err != nil || missing {
+		t.Errorf("IsHostKnown on a missing file = (%v, %v), want (false, nil)", missing, err)
 	}
 }

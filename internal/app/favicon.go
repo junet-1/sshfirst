@@ -23,6 +23,21 @@ var faviconClient = &http.Client{
 	Transport: &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	},
+	// A panel decides where its own redirects point, so without this it could
+	// bounce the icon request onto any address the app can reach — 127.0.0.1 or
+	// a device on the user's LAN — and use it as a probe from inside that
+	// network. Staying on the same hostname keeps the fetch pointed at the
+	// machine the user actually configured; a different port or an http→https
+	// upgrade is still that machine.
+	CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 5 {
+			return fmt.Errorf("too many redirects")
+		}
+		if req.URL.Hostname() != via[0].URL.Hostname() {
+			return fmt.Errorf("refusing redirect to another host (%s)", req.URL.Hostname())
+		}
+		return nil
+	},
 }
 
 const maxFaviconBytes = 256 * 1024

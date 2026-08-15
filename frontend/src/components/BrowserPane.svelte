@@ -28,9 +28,22 @@
   // document, which would load the shell inside its own iframe.
   $: frameUrl = normalizePanelUrl(url) || 'about:blank'
 
+  // The toolbar names the host, not the whole URL. A URL can be written so that
+  // the path opens with something host-shaped — https://evil.tld\@panel.example
+  // parses as evil.tld with "@panel.example" as its path — and an elided long
+  // URL then reads like the wrong machine. The host is also what the password
+  // would be sent to, so it is the part worth showing. Full URL on hover.
+  $: panelHost = (() => {
+    try {
+      return new URL(frameUrl).host || url
+    } catch {
+      return url
+    }
+  })()
+
   // The panel's favicon via the shared backend cache, globe as fallback.
-  $: void ensureFavicon(url)
-  $: favicon = $favicons[faviconOrigin(url)]
+  $: void ensureFavicon(frameUrl)
+  $: favicon = $favicons[faviconOrigin(frameUrl)]
 
   $: layerStyle = rect
     ? `left:${rect.left}%;top:${rect.top}%;width:${rect.width}%;height:${rect.height}%;right:auto;bottom:auto;`
@@ -76,9 +89,9 @@
     // A plaintext panel on a routable address would hand the password to
     // anyone on the path, with no user action beyond opening the tab. Homelab
     // hardware on the local network is exempt — see lib/panelUrl.
-    if (!mayAutofill(url)) return
+    if (!mayAutofill(frameUrl)) return
     try {
-      const targetOrigin = new URL(url).origin
+      const targetOrigin = new URL(frameUrl).origin
       const saved = await loadAutofillCredentials()
       if (!saved || !iframeEl?.contentWindow) return
       const send = () => iframeEl?.contentWindow?.postMessage({
@@ -101,7 +114,7 @@
       if (event.source !== iframeEl?.contentWindow) return
       if (!event.data || event.data.type !== 'ssh-first:web-autofill-submitted') return
       try {
-        if (event.origin !== new URL(url).origin || event.data.targetOrigin !== event.origin) return
+        if (event.origin !== new URL(frameUrl).origin || event.data.targetOrigin !== event.origin) return
       } catch {
         return
       }
@@ -131,7 +144,7 @@
         <Icon name="globe" size={12} />
       {/if}
     </span>
-    <span class="panel-url" title={url}>{url}</span>
+    <span class="panel-url" title={url}>{panelHost}</span>
     <button class="tool" title={$t('browser.reload')} aria-label={$t('browser.reload')} on:click={reload}>
       <Icon name="refresh" size={12} />
     </button>
@@ -145,8 +158,11 @@
     </button>
   </div>
   <div class="frame-wrap">
-    <!-- A cross-origin iframe cannot reach the app's Wails bindings (same-origin
-         policy), so the panel is isolated from the SSH backend by construction. -->
+    <!-- A cross-origin iframe cannot reach the app's Wails bindings, so the
+         panel is isolated from the SSH backend — but that holds only because
+         the src is a real http(s) URL. A javascript: URL here would run in this
+         document's own origin instead, which is why frameUrl is vetted rather
+         than passed through. -->
     <iframe
       bind:this={iframeEl}
       src={frameUrl}

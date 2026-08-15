@@ -25,6 +25,35 @@ describe('normalizePanelUrl', () => {
     expect(normalizePanelUrl('https://user:pw@evil.tld/')).toBe('')
   })
 
+  it('cannot be tricked into producing a javascript: URL', () => {
+    // Without a scheme separator these get the https prefix and end up as
+    // ordinary (dead) https URLs rather than script URLs — the check looks at
+    // the parsed protocol, not at the raw string, so newline and tab tricks
+    // that the URL parser strips cannot smuggle a scheme past it either.
+    for (const raw of [
+      'javascript:alert(1)',
+      'javascript:/**/alert(1)',
+      'java\nscript://x%0aalert(1)',
+      'java\tscript://x%0aalert(1)',
+      ' javascript://x%0aalert(1)',
+      'vbscript:msgbox(1)',
+      'blob:https://x/y',
+      'about:blank',
+    ]) {
+      const out = normalizePanelUrl(raw)
+      expect(out === '' || out.startsWith('https://') || out.startsWith('http://')).toBe(true)
+      expect(out.toLowerCase()).not.toContain('javascript:')
+      expect(out.toLowerCase()).not.toContain('vbscript:')
+    }
+  })
+
+  it('canonicalises alternative address forms so later checks see one shape', () => {
+    // mayAutofill and the origin comparison both work on the parsed host, so
+    // 127.0.0.1 must not be able to hide as a decimal or hex literal.
+    expect(normalizePanelUrl('http://2130706433/')).toBe('http://127.0.0.1/')
+    expect(normalizePanelUrl('http://0x7f000001/')).toBe('http://127.0.0.1/')
+  })
+
   it('rejects empty and unparseable input', () => {
     expect(normalizePanelUrl('')).toBe('')
     expect(normalizePanelUrl('   ')).toBe('')

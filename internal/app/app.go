@@ -129,6 +129,13 @@ func (a *App) ServiceStartup(ctx context.Context, _ application.ServiceOptions) 
 	// Log to both stderr (visible when run from a terminal) and a file
 	// under the data dir (so double-clicked launches are still debuggable).
 	// Never logs secret material — see internal/secrets and internal/ssh.
+	//
+	// The directory has to exist first. storage.Open creates it, but that comes
+	// afterwards, so on a first run the log file was silently never created —
+	// the one launch where having a log matters most.
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("create data dir: %w", err)
+	}
 	if logFile, err := os.OpenFile(filepath.Join(dir, "ssh-first.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600); err == nil {
 		log.SetOutput(io.MultiWriter(os.Stderr, logFile))
 	} else {
