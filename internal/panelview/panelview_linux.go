@@ -29,9 +29,14 @@ static WebKitWebView *pv_find_webview(GtkWidget *widget) {
 }
 
 // Wails builds GtkWindow -> GtkBox -> [menu bar] + WebKitWebView. This slips a
-// GtkOverlay in around that web view and adds a GtkFixed on top of it, which is
-// where panel views get placed at absolute coordinates. The box keeps its order,
-// so the menu bar stays above the overlay.
+// GtkOverlay in around that web view; panel views are then added as overlay
+// children, each positioned by its own margins.
+//
+// Note what is deliberately absent: no container spanning the overlay. A
+// full-size GtkFixed would be the obvious way to place children at absolute
+// coordinates, but an overlay child covers the whole window for input picking
+// even when it draws nothing, so every click outside a panel would land on it
+// and the entire interface below would stop responding.
 static GtkWidget *pv_install(GtkWindow *window, GtkWidget **shell_out) {
     GtkWidget *shell = GTK_WIDGET(pv_find_webview(GTK_WIDGET(window)));
     if (shell == NULL) {
@@ -53,15 +58,13 @@ static GtkWidget *pv_install(GtkWindow *window, GtkWidget **shell_out) {
     gtk_overlay_set_child(GTK_OVERLAY(overlay), shell);
     g_object_unref(shell);
 
-    GtkWidget *fixed = gtk_fixed_new();
-    gtk_overlay_add_overlay(GTK_OVERLAY(overlay), fixed);
     gtk_box_append(GTK_BOX(parent), overlay);
 
     *shell_out = shell;
-    return fixed;
+    return overlay;
 }
 
-static WebKitWebView *pv_new_view(GtkWidget *fixed, const char *uri, const char *script) {
+static WebKitWebView *pv_new_view(GtkWidget *overlay, const char *uri, const char *script) {
     WebKitWebView *view = WEBKIT_WEB_VIEW(webkit_web_view_new());
 
     // No network session is passed, so the view uses the default one — the same
@@ -82,11 +85,15 @@ static WebKitWebView *pv_new_view(GtkWidget *fixed, const char *uri, const char 
     }
 
     GtkWidget *widget = GTK_WIDGET(view);
-    // Placed off-screen and hidden until the frontend reports a rectangle, so a
-    // new panel never flashes across the window first.
+    // Anchored top-left so the overlay honours the margins as absolute
+    // coordinates instead of stretching the view across the window.
+    gtk_widget_set_halign(widget, GTK_ALIGN_START);
+    gtk_widget_set_valign(widget, GTK_ALIGN_START);
+    // Hidden until the frontend reports a rectangle, so a new panel never
+    // flashes across the window first — and, while hidden, it takes no input.
     gtk_widget_set_visible(widget, FALSE);
     gtk_widget_set_size_request(widget, 1, 1);
-    gtk_fixed_put(GTK_FIXED(fixed), widget, 0, 0);
+    gtk_overlay_add_overlay(GTK_OVERLAY(overlay), widget);
     webkit_web_view_load_uri(view, uri);
     return view;
 }
@@ -95,7 +102,7 @@ static WebKitWebView *pv_new_view(GtkWidget *fixed, const char *uri, const char 
 // two agree only at zoom 1, so the ratio is taken from the application's own
 // web view, whose widget size and reported viewport size describe exactly that
 // scaling.
-static void pv_set_bounds(GtkWidget *fixed, GtkWidget *shell, WebKitWebView *view,
+static void pv_set_bounds(GtkWidget *overlay, GtkWidget *shell, WebKitWebView *view,
                           int x, int y, int w, int h,
                           int viewport_w, int viewport_h, int visible) {
     GtkWidget *widget = GTK_WIDGET(view);
@@ -124,12 +131,13 @@ static void pv_set_bounds(GtkWidget *fixed, GtkWidget *shell, WebKitWebView *vie
     if (sh < 1) sh = 1;
 
     gtk_widget_set_size_request(widget, sw, sh);
-    gtk_fixed_move(GTK_FIXED(fixed), widget, sx, sy);
+    gtk_widget_set_margin_start(widget, sx);
+    gtk_widget_set_margin_top(widget, sy);
     gtk_widget_set_visible(widget, TRUE);
 }
 
-static void pv_remove(GtkWidget *fixed, WebKitWebView *view) {
-    gtk_fixed_remove(GTK_FIXED(fixed), GTK_WIDGET(view));
+static void pv_remove(GtkWidget *overlay, WebKitWebView *view) {
+    gtk_overlay_remove_overlay(GTK_OVERLAY(overlay), GTK_WIDGET(view));
 }
 
 static void pv_reload(WebKitWebView *view) {
@@ -151,10 +159,10 @@ import (
 // caller is responsible for that (see internal/app, which wraps these in the
 // runtime's main-thread dispatch). The mutex only guards the Go-side bookkeeping.
 var (
-	mu    sync.Mutex
-	fixed *C.GtkWidget
-	shell *C.GtkWidget
-	views = map[string]*C.WebKitWebView{}
+	mu      sync.Mutex
+	overlay *C.GtkWidget
+	shell   *C.GtkWidget
+	views   = map[string]*C.WebKitWebView{}
 )
 
 // Supported reports whether panel views can be used on this build.
@@ -166,7 +174,7 @@ func Supported() bool { return true }
 func Install(nativeWindow unsafe.Pointer) bool {
 	mu.Lock()
 	defer mu.Unlock()
-	if fixed != nil {
+	if overlay != nil {
 		return true
 	}
 	if nativeWindow == nil {
@@ -177,7 +185,7 @@ func Install(nativeWindow unsafe.Pointer) bool {
 	if layer == nil {
 		return false
 	}
-	fixed = layer
+	overlay = layer
 	shell = shellOut
 	return true
 }
@@ -187,7 +195,7 @@ func Install(nativeWindow unsafe.Pointer) bool {
 func Open(id, uri, script string) {
 	mu.Lock()
 	defer mu.Unlock()
-	if fixed == nil || views[id] != nil {
+	if overlay == nil || views[id] != nil {
 		return
 	}
 
@@ -200,7 +208,7 @@ func Open(id, uri, script string) {
 		defer C.free(unsafe.Pointer(cscript))
 	}
 
-	views[id] = C.pv_new_view(fixed, curi, cscript)
+	views[id] = C.pv_new_view(overlay, curi, cscript)
 }
 
 // SetBounds moves the panel view to the rectangle the frontend measured, or
@@ -209,14 +217,14 @@ func SetBounds(id string, b Bounds) {
 	mu.Lock()
 	defer mu.Unlock()
 	view := views[id]
-	if fixed == nil || view == nil {
+	if overlay == nil || view == nil {
 		return
 	}
 	visible := C.int(0)
 	if b.Visible {
 		visible = 1
 	}
-	C.pv_set_bounds(fixed, shell, view,
+	C.pv_set_bounds(overlay, shell, view,
 		C.int(b.X), C.int(b.Y), C.int(b.Width), C.int(b.Height),
 		C.int(b.ViewportW), C.int(b.ViewportH), visible)
 }
@@ -226,10 +234,10 @@ func Close(id string) {
 	mu.Lock()
 	defer mu.Unlock()
 	view := views[id]
-	if fixed == nil || view == nil {
+	if overlay == nil || view == nil {
 		return
 	}
-	C.pv_remove(fixed, view)
+	C.pv_remove(overlay, view)
 	delete(views, id)
 }
 
