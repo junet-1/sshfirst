@@ -156,7 +156,7 @@ static void pv_prepare(WebKitWebView *view) {
     gtk_widget_set_size_request(widget, 1, 1);
 }
 
-WebKitWebView *pv_new_view(GtkWidget *overlay, const char *uri, const char *script) {
+WebKitWebView *pv_new_view(GtkWidget *overlay, const char *script) {
     WebKitWebView *view = WEBKIT_WEB_VIEW(webkit_web_view_new());
 
     // No network session is passed, so the view uses the default one — the same
@@ -182,8 +182,13 @@ WebKitWebView *pv_new_view(GtkWidget *overlay, const char *uri, const char *scri
 
     pv_prepare(view);
     gtk_overlay_add_overlay(GTK_OVERLAY(overlay), GTK_WIDGET(view));
-    webkit_web_view_load_uri(view, uri);
     return view;
+}
+
+// Separate from creation because loading emits notify::uri synchronously, and
+// the Go side wants the view registered before that arrives.
+void pv_load_uri(WebKitWebView *view, const char *uri) {
+    webkit_web_view_load_uri(view, uri);
 }
 
 void pv_adopt_view(GtkWidget *overlay, WebKitWebView *view) {

@@ -13,8 +13,11 @@
 // shell_out receives that web view, whose size is the scale reference.
 GtkWidget *pv_install(GtkWindow *window, GtkWidget **shell_out);
 
-// Creates a panel view for uri, injecting script into every frame.
-WebKitWebView *pv_new_view(GtkWidget *overlay, const char *uri, const char *script);
+// Creates an empty panel view, injecting script into every frame of whatever it
+// later loads. Loading is a separate step so the caller can register the view
+// before the notifications the load produces arrive.
+WebKitWebView *pv_new_view(GtkWidget *overlay, const char *script);
+void pv_load_uri(WebKitWebView *view, const char *uri);
 
 // Places a view WebKit itself created (a popup) into the overlay.
 void pv_adopt_view(GtkWidget *overlay, WebKitWebView *view);

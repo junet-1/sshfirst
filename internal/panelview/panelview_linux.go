@@ -22,6 +22,13 @@ import (
 // Every call here touches GTK and must therefore run on the main thread; the
 // caller is responsible for that (see internal/app, which wraps these in the
 // runtime's main-thread dispatch). The mutex only guards the Go-side bookkeeping.
+//
+// It must never be held across a call into C. WebKit emits notify::uri and
+// notify::title synchronously — load_uri, reload and disposal all do it before
+// returning — and those signals come straight back here through the exported
+// callbacks, which need the same mutex. Holding it across the call deadlocks
+// the main thread and freezes the whole window. So: read what is needed under
+// the lock, release, then call.
 var (
 	mu      sync.Mutex
 	overlay *C.GtkWidget
@@ -66,20 +73,25 @@ func OnInfo(handler func(Info)) {
 // application.WebviewWindow.NativeWindow.
 func Install(nativeWindow unsafe.Pointer) bool {
 	mu.Lock()
-	defer mu.Unlock()
-	if overlay != nil {
+	already := overlay != nil
+	mu.Unlock()
+	if already {
 		return true
 	}
 	if nativeWindow == nil {
 		return false
 	}
+
 	var shellOut *C.GtkWidget
 	layer := C.pv_install((*C.GtkWindow)(nativeWindow), &shellOut)
 	if layer == nil {
 		return false
 	}
+
+	mu.Lock()
 	overlay = layer
 	shell = shellOut
+	mu.Unlock()
 	return true
 }
 
@@ -87,13 +99,12 @@ func Install(nativeWindow unsafe.Pointer) bool {
 // injected into every frame of the page; pass "" for none.
 func Open(id, uri, script string) {
 	mu.Lock()
-	defer mu.Unlock()
-	if overlay == nil || views[id] != nil {
+	layer := overlay
+	exists := views[id] != nil
+	mu.Unlock()
+	if layer == nil || exists {
 		return
 	}
-
-	curi := C.CString(uri)
-	defer C.free(unsafe.Pointer(curi))
 
 	var cscript *C.char
 	if script != "" {
@@ -101,23 +112,33 @@ func Open(id, uri, script string) {
 		defer C.free(unsafe.Pointer(cscript))
 	}
 
-	views[id] = C.pv_new_view(overlay, curi, cscript)
+	// Created empty first and registered before anything is loaded, so the
+	// notifications the load produces can already be matched to this id.
+	view := C.pv_new_view(layer, cscript)
+
+	mu.Lock()
+	views[id] = view
+	mu.Unlock()
+
+	curi := C.CString(uri)
+	defer C.free(unsafe.Pointer(curi))
+	C.pv_load_uri(view, curi)
 }
 
 // SetBounds moves the panel view to the rectangle the frontend measured, or
 // hides it when the tab is not on screen.
 func SetBounds(id string, b Bounds) {
 	mu.Lock()
-	defer mu.Unlock()
-	view := views[id]
-	if overlay == nil || view == nil {
+	layer, base, view := overlay, shell, views[id]
+	mu.Unlock()
+	if layer == nil || view == nil {
 		return
 	}
 	visible := C.int(0)
 	if b.Visible {
 		visible = 1
 	}
-	C.pv_set_bounds(overlay, shell, view,
+	C.pv_set_bounds(layer, base, view,
 		C.int(b.X), C.int(b.Y), C.int(b.Width), C.int(b.Height),
 		C.int(b.ViewportW), C.int(b.ViewportH), visible)
 }
@@ -125,20 +146,23 @@ func SetBounds(id string, b Bounds) {
 // Close destroys a panel's view.
 func Close(id string) {
 	mu.Lock()
-	defer mu.Unlock()
-	view := views[id]
-	if overlay == nil || view == nil {
+	layer, view := overlay, views[id]
+	// Forgotten before the widget goes away: disposal emits notifications, and
+	// they should no longer resolve to a tab that is being closed.
+	delete(views, id)
+	mu.Unlock()
+	if layer == nil || view == nil {
 		return
 	}
-	C.pv_remove(overlay, view)
-	delete(views, id)
+	C.pv_remove(layer, view)
 }
 
 // Reload reloads a panel's page.
 func Reload(id string) {
 	mu.Lock()
-	defer mu.Unlock()
-	if view := views[id]; view != nil {
+	view := views[id]
+	mu.Unlock()
+	if view != nil {
 		C.pv_reload(view)
 	}
 }
@@ -148,8 +172,8 @@ func Reload(id string) {
 // parent frame for the application to post them from.
 func Evaluate(id, js string) {
 	mu.Lock()
-	defer mu.Unlock()
 	view := views[id]
+	mu.Unlock()
 	if view == nil {
 		return
 	}
@@ -174,9 +198,11 @@ func panelViewPopupReady(view *C.WebKitWebView, uri *C.char) {
 	popupCount++
 	id := fmt.Sprintf("panel-popup-%d", popupCount)
 	views[id] = view
-	C.pv_adopt_view(overlay, view)
+	layer := overlay
 	handler := popupHandler
 	mu.Unlock()
+
+	C.pv_adopt_view(layer, view)
 
 	if handler != nil {
 		handler(Popup{ID: id, URL: C.GoString(uri)})
