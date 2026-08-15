@@ -516,6 +516,15 @@ export function openControlPanelTab(hostLabel: string, rawUrl: string, resourceH
   return tabId
 }
 
+function hostLabelFromUrl(url: string | undefined): string | undefined {
+  if (!url) return undefined
+  try {
+    return new URL(url).host || undefined
+  } catch {
+    return undefined
+  }
+}
+
 /** Wraps a tab around a native view that already exists, opened by a panel.
  *
  * The view is created by WebKit at the moment the page calls window.open, and
@@ -524,13 +533,10 @@ export function openControlPanelTab(hostLabel: string, rawUrl: string, resourceH
  * is given rather than opening anything, and takes focus, because a login step
  * nobody can see is worse than useless. */
 export function adoptPanelPopupTab(tabId: string, url: string): void {
-  let title = 'Popup'
-  try {
-    if (url) title = new URL(url).host || title
-  } catch {
-    // A popup can be handed to us before it has a usable address; the tab is
-    // still worth showing, it just keeps the generic name.
-  }
+  // The page has no title yet at this point — it is only just loading — so the
+  // tab starts out named after its host and is renamed by the panel:info event
+  // as soon as the document says what it is.
+  const title = hostLabelFromUrl(url) ?? 'Popup'
   tabs.update((all) => ({
     ...all,
     [tabId]: {
@@ -802,6 +808,19 @@ export function initConnectionEvents(): void {
   // The page closed itself, which is how most OAuth popups end.
   on<{ tabId: string }>('panel:popup-closed', (evt) => {
     void closeTab(evt.tabId)
+  })
+
+  // A popup tab follows its page, the way a browser tab does: the title comes
+  // from the document, and the favicon follows the address, which changes as an
+  // OAuth flow walks from one host to the next. Only popup tabs — a configured
+  // panel keeps the label its host was given.
+  on<{ tabId: string; title?: string; url?: string }>('panel:info', (evt) => {
+    tabs.update((all) => {
+      const tab = all[evt.tabId]
+      if (!tab || !tab.adoptedPanel) return all
+      const title = evt.title?.trim() || hostLabelFromUrl(evt.url) || tab.title
+      return { ...all, [evt.tabId]: { ...tab, title, url: evt.url || tab.url } }
+    })
   })
 
   on<StatusEvent>('connection:status', (evt) => {

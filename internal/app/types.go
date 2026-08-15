@@ -143,3 +143,11 @@ type PanelPopupEvent struct {
 	TabID string `json:"tabId"`
 	URL   string `json:"url,omitempty"`
 }
+
+// PanelInfoEvent carries what a panel's page currently calls itself and where it
+// currently is, so a tab opened by that page can follow along.
+type PanelInfoEvent struct {
+	TabID string `json:"tabId"`
+	Title string `json:"title,omitempty"`
+	URL   string `json:"url,omitempty"`
+}

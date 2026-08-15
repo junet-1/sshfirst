@@ -131,7 +131,20 @@ static GtkWidget *pv_on_create(WebKitWebView *view, WebKitNavigationAction *acti
     return GTK_WIDGET(popup);
 }
 
+// A popup tab is named after the page, like a browser tab, so title and address
+// are reported as they change — an OAuth flow walks through several hosts, and
+// the tab should say where it currently is.
+static void pv_notify_info(GObject *object, GParamSpec *spec, gpointer user_data) {
+    WebKitWebView *view = WEBKIT_WEB_VIEW(object);
+    const char *title = webkit_web_view_get_title(view);
+    const char *uri = webkit_web_view_get_uri(view);
+    panelViewInfoChanged(view, (char *)(title ? title : ""), (char *)(uri ? uri : ""));
+}
+
 static void pv_prepare(WebKitWebView *view) {
+    g_signal_connect(view, "notify::title", G_CALLBACK(pv_notify_info), NULL);
+    g_signal_connect(view, "notify::uri", G_CALLBACK(pv_notify_info), NULL);
+
     GtkWidget *widget = GTK_WIDGET(view);
     // Anchored top-left so the overlay honours the margins as absolute
     // coordinates instead of stretching the view across the window.

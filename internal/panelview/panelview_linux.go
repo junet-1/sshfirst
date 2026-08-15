@@ -31,6 +31,7 @@ var (
 	popupCount   int
 	popupHandler func(Popup)
 	closeHandler func(id string)
+	infoHandler  func(Info)
 )
 
 // Supported reports whether panel views can be used on this build.
@@ -50,6 +51,14 @@ func OnClosed(handler func(id string)) {
 	mu.Lock()
 	defer mu.Unlock()
 	closeHandler = handler
+}
+
+// OnInfo registers what happens when a panel's page changes its title or
+// address, so a tab can follow it the way a browser tab does.
+func OnInfo(handler func(Info)) {
+	mu.Lock()
+	defer mu.Unlock()
+	infoHandler = handler
 }
 
 // Install prepares the window to host panel views and reports whether that
@@ -174,22 +183,42 @@ func panelViewPopupReady(view *C.WebKitWebView, uri *C.char) {
 	}
 }
 
+// panelViewInfoChanged is called whenever a panel's page changes its title or
+// address.
+//
+//export panelViewInfoChanged
+func panelViewInfoChanged(view *C.WebKitWebView, title *C.char, uri *C.char) {
+	mu.Lock()
+	id := idForView(view)
+	handler := infoHandler
+	mu.Unlock()
+
+	if id != "" && handler != nil {
+		handler(Info{ID: id, Title: C.GoString(title), URL: C.GoString(uri)})
+	}
+}
+
 // panelViewPopupClosed is called when a page closes itself.
 //
 //export panelViewPopupClosed
 func panelViewPopupClosed(view *C.WebKitWebView) {
 	mu.Lock()
-	var id string
-	for candidate, known := range views {
-		if known == view {
-			id = candidate
-			break
-		}
-	}
+	id := idForView(view)
 	handler := closeHandler
 	mu.Unlock()
 
 	if id != "" && handler != nil {
 		handler(id)
 	}
+}
+
+// idForView maps a WebKit view back to the id it was registered under. Callers
+// must hold mu.
+func idForView(view *C.WebKitWebView) string {
+	for id, known := range views {
+		if known == view {
+			return id
+		}
+	}
+	return ""
 }

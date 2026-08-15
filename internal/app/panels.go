@@ -61,6 +61,13 @@ func (a *App) InstallPanelViews(window *application.WebviewWindow) bool {
 		a.emit("panel:popup-closed", PanelPopupEvent{TabID: id})
 	})
 
+	// A popup tab is named after the page it is showing, like a browser tab
+	// would be. An OAuth flow walks through several hosts, so this keeps coming
+	// as the page moves.
+	panelview.OnInfo(func(info panelview.Info) {
+		a.emit("panel:info", PanelInfoEvent{TabID: info.ID, Title: info.Title, URL: info.URL})
+	})
+
 	return panelview.Install(window.NativeWindow())
 }
 

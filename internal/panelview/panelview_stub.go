@@ -26,3 +26,5 @@ func Evaluate(id, js string) {}
 func OnPopup(handler func(Popup)) {}
 
 func OnClosed(handler func(id string)) {}
+
+func OnInfo(handler func(Info)) {}

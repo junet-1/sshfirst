@@ -27,6 +27,13 @@ type Popup struct {
 	URL string
 }
 
+// Info is what a panel's page currently calls itself and where it currently is.
+type Info struct {
+	ID    string
+	Title string
+	URL   string
+}
+
 // Bounds is a panel's rectangle inside the web view's own coordinate space,
 // together with the viewport it was measured against. Both are in CSS pixels;
 // the platform implementation converts them into widget coordinates.
