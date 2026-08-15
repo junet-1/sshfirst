@@ -16,6 +16,10 @@
   export let tabId: string
   export let url: string
   export let resourceHostId: number | undefined = undefined
+  // Set for a tab wrapped around a view WebKit already created (a popup a panel
+  // opened). Such a tab must not open a view of its own: it has to keep the one
+  // WebKit made, or window.opener no longer connects it to its opener.
+  export let adoptedPanel = false
   export let visible: boolean
   export let rect: Rect | null = null
 
@@ -165,7 +169,14 @@
   }
 
   async function openNativeView(): Promise<void> {
-    if (!nativeView || nativeOpened || frameUrl === 'about:blank') return
+    if (!nativeView || nativeOpened) return
+    if (adoptedPanel) {
+      nativeOpened = true
+      await tick()
+      reportBounds()
+      return
+    }
+    if (frameUrl === 'about:blank') return
     try {
       await backend.openPanelView(tabId, frameUrl)
     } catch {

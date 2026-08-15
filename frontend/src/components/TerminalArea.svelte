@@ -36,6 +36,7 @@
           tabId={tab.tabId}
           url={tab.url ?? ''}
           resourceHostId={tab.resourceHostId}
+          adoptedPanel={tab.adoptedPanel ?? false}
           {visible}
           rect={$isSplit ? rects.get(tab.tabId) ?? null : null}
         />

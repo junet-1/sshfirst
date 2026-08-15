@@ -135,3 +135,11 @@ type ImportResult struct {
 	ImportedCount int            `json:"importedCount"`
 	Hosts         []storage.Host `json:"hosts"`
 }
+
+// PanelPopupEvent announces a window a web panel opened, which the frontend
+// turns into a tab. TabID names a native view that already exists, so the tab
+// adopts it rather than creating one.
+type PanelPopupEvent struct {
+	TabID string `json:"tabId"`
+	URL   string `json:"url,omitempty"`
+}

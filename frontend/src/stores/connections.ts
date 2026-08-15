@@ -18,6 +18,8 @@ export interface TabViewModel {
   kind: TabKind
   /** Only set for kind === 'browser': the control-panel URL shown in the iframe. */
   url?: string
+  /** True when the native view for this tab already exists and must not be created again. */
+  adoptedPanel?: boolean
   /** Persisted web host backing this browser tab, when it came from the host catalog. */
   resourceHostId?: number
 }
@@ -514,6 +516,39 @@ export function openControlPanelTab(hostLabel: string, rawUrl: string, resourceH
   return tabId
 }
 
+/** Wraps a tab around a native view that already exists, opened by a panel.
+ *
+ * The view is created by WebKit at the moment the page calls window.open, and
+ * it has to stay that view — window.opener is what lets an OAuth popup hand its
+ * result back to the panel that started the flow. So the tab adopts the id it
+ * is given rather than opening anything, and takes focus, because a login step
+ * nobody can see is worse than useless. */
+export function adoptPanelPopupTab(tabId: string, url: string): void {
+  let title = 'Popup'
+  try {
+    if (url) title = new URL(url).host || title
+  } catch {
+    // A popup can be handed to us before it has a usable address; the tab is
+    // still worth showing, it just keeps the generic name.
+  }
+  tabs.update((all) => ({
+    ...all,
+    [tabId]: {
+      tabId,
+      connectionId: '',
+      title,
+      closed: false,
+      unread: false,
+      bell: false,
+      kind: 'browser',
+      url,
+      adoptedPanel: true
+    }
+  }))
+  activeConnectionId.set(null)
+  activeTabId.set(tabId)
+}
+
 /** Clears the current runtime without confirmation before a workspace restore. */
 export async function resetWorkspaceEnvironment(): Promise<string[]> {
   const connectionIDs = Object.keys(get(connections))
@@ -756,6 +791,18 @@ let eventsInitialized = false
 export function initConnectionEvents(): void {
   if (eventsInitialized) return
   eventsInitialized = true
+
+  // A web panel asked to open a window. The native view already exists; this
+  // only gives it a tab and brings it to the front, because an OAuth step that
+  // happens somewhere invisible is worse than no popup at all.
+  on<{ tabId: string; url?: string }>('panel:popup', (evt) => {
+    adoptPanelPopupTab(evt.tabId, evt.url ?? '')
+  })
+
+  // The page closed itself, which is how most OAuth popups end.
+  on<{ tabId: string }>('panel:popup-closed', (evt) => {
+    void closeTab(evt.tabId)
+  })
 
   on<StatusEvent>('connection:status', (evt) => {
     connections.update((all) => {

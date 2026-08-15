@@ -16,6 +16,17 @@
 // HiDPI or zoomed webview does not measure in the same units the window does.
 package panelview
 
+// Popup is a window a panel asked to open — window.open, a target=_blank link,
+// or the popup half of an OAuth login. The application turns it into a tab: the
+// page it came from is already a tab, and a login that detaches into a floating
+// window in the middle of a flow is jarring.
+type Popup struct {
+	// ID identifies the already-created view, to be used like any panel id.
+	ID string
+	// URL is what the popup is loading, for naming the tab.
+	URL string
+}
+
 // Bounds is a panel's rectangle inside the web view's own coordinate space,
 // together with the viewport it was measured against. Both are in CSS pixels;
 // the platform implementation converts them into widget coordinates.

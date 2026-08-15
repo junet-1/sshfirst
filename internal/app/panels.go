@@ -48,6 +48,19 @@ func (a *App) InstallPanelViews(window *application.WebviewWindow) bool {
 	if !panelview.Supported() || window == nil {
 		return false
 	}
+
+	// A panel that opens a window gets a tab instead. The view already exists
+	// by this point — WebKit created it, and it has to be that one or
+	// window.opener would not connect the popup back to the page that opened
+	// it — so the frontend is told to wrap a tab around an id that is already
+	// live, and does not open a view of its own for it.
+	panelview.OnPopup(func(popup panelview.Popup) {
+		a.emit("panel:popup", PanelPopupEvent{TabID: popup.ID, URL: popup.URL})
+	})
+	panelview.OnClosed(func(id string) {
+		a.emit("panel:popup-closed", PanelPopupEvent{TabID: id})
+	})
+
 	return panelview.Install(window.NativeWindow())
 }
 
