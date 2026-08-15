@@ -7,6 +7,9 @@
   import type { Rect } from '../lib/layoutTree'
   import { onDestroy, onMount, tick } from 'svelte'
   import { commandPaletteOpen } from '../stores/ui'
+  import { hostKeyQueue, keyboardInteractiveQueue, passphraseQueue, passwordQueue } from '../stores/prompts'
+  import { confirmRequest } from '../stores/confirm'
+  import { workspaceDialogOpen } from '../stores/workspaces'
 
   // visible: this pane is part of the current layout (soloed tab, or a tiled
   // pane in split mode). rect: its box in percent when tiled, else null.
@@ -126,15 +129,26 @@
     }
   }
 
+  // A native widget cannot be layered under HTML, so anything the app draws
+  // over the workspace has to make the panel stand down instead. That includes
+  // the prompts the backend raises on its own: a host key warning appearing
+  // behind an open panel would be worse than a moment of blank pane.
+  $: modalOpen =
+    $commandPaletteOpen ||
+    $hostKeyQueue.length > 0 ||
+    $passwordQueue.length > 0 ||
+    $passphraseQueue.length > 0 ||
+    $keyboardInteractiveQueue.length > 0 ||
+    $confirmRequest !== null ||
+    $workspaceDialogOpen
+
   // The native view is positioned in the window, not in the document, so every
   // layout change has to be pushed to it: pane resizes, split drags, tab
-  // switches, window resizes. Anything the app draws on top (the command
-  // palette, dialogs) would end up *under* a native widget, so the view is
-  // hidden while those are open rather than fought with over z-order.
+  // switches, window resizes.
   function reportBounds(): void {
     if (!nativeView || !nativeOpened || !frameWrapEl) return
     const rect = frameWrapEl.getBoundingClientRect()
-    const onScreen = visible && !$commandPaletteOpen && rect.width > 0 && rect.height > 0
+    const onScreen = visible && !modalOpen && rect.width > 0 && rect.height > 0
     void backend
       .setPanelViewBounds(
         tabId,
@@ -183,7 +197,7 @@
 
   // Re-measure whenever anything that moves the pane changes.
   $: if (nativeView && nativeOpened) {
-    void [visible, rect, $commandPaletteOpen]
+    void [visible, rect, modalOpen]
     void tick().then(reportBounds)
   }
 

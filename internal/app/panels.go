@@ -3,6 +3,8 @@ package app
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
+	"strings"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
@@ -18,6 +20,19 @@ import (
 // rectangle here; this file is the thin, main-thread-safe bridge to the native
 // side. Where panel views are unavailable (macOS, the gtk3 fallback, CGO off)
 // PanelViewsSupported reports false and the frontend keeps its iframe.
+
+// panelOrigin reduces a stored panel URL to the origin a credential may be
+// delivered to.
+func panelOrigin(raw string) (string, error) {
+	if err := validatePanelURL(raw); err != nil {
+		return "", err
+	}
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return "", err
+	}
+	return parsed.Scheme + "://" + parsed.Host, nil
+}
 
 // PanelViewsSupported tells the frontend which rendering path to use.
 func (a *App) PanelViewsSupported() bool {
@@ -114,24 +129,37 @@ func (a *App) AutofillPanelView(tabID string, hostID int64) error {
 		return err
 	}
 
+	// The origin the password belongs to, taken from the host's configured URL —
+	// never from the page. A panel can navigate: an SSO redirect, a link, or a
+	// hostile redirect all change location.origin, and a credential must not
+	// follow it there. The iframe path got this from postMessage's targetOrigin,
+	// which the engine enforces; injecting into a top-level document has to
+	// state the expectation explicitly instead.
+	origin, err := panelOrigin(host.ControlPanelURL)
+	if err != nil {
+		return err
+	}
+
 	message, err := json.Marshal(map[string]string{
-		"type":  "ssh-first:web-autofill",
-		"email": host.User,
-		// The bridge only acts when this matches the page's own origin, so a
-		// panel that redirected elsewhere in the meantime gets nothing.
-		"targetOrigin": "",
+		"type":         "ssh-first:web-autofill",
+		"email":        host.User,
+		"targetOrigin": origin,
 		"password":     password,
 	})
 	if err != nil {
 		return err
 	}
+	expected, err := json.Marshal(origin)
+	if err != nil {
+		return err
+	}
 
-	// location.origin is filled in inside the page rather than here: the app
-	// knows the configured URL, the page knows where it actually ended up, and
-	// the bridge compares the two.
+	// Checked twice on purpose: the guard skips the injection when the page has
+	// moved on, and postMessage's second argument makes the engine drop the
+	// message anyway if it somehow did not.
 	js := fmt.Sprintf(
-		"(() => { const m = %s; m.targetOrigin = location.origin; window.postMessage(m, location.origin); })();",
-		string(message),
+		"(() => { const expected = %s; if (location.origin !== expected) return; window.postMessage(%s, expected); })();",
+		string(expected), string(message),
 	)
 	application.InvokeAsync(func() {
 		panelview.Evaluate(tabID, js)
