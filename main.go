@@ -121,6 +121,18 @@ func main() {
 		installAutofillOnce.Do(func() {
 			application.InvokeAsync(func() {
 				webautofill.Install(mainWindow.NativeWindow())
+
+				// Web panels are rendered in their own WebKit views layered over
+				// this window rather than in iframes, because the interesting
+				// ones refuse to be framed at all. This rearranges the window's
+				// widget tree, so it happens once, here, on the UI thread.
+				//
+				// If it fails the app stays perfectly usable — the frontend
+				// falls back to iframes — but panels that refuse framing will
+				// come up blank, so it is worth a line in the log.
+				if !backend.InstallPanelViews(mainWindow) {
+					log.Printf("ssh-first: native panel views unavailable, falling back to iframes")
+				}
 			})
 		})
 	})

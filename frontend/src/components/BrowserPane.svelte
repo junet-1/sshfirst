@@ -5,7 +5,8 @@
   import { ensureFavicon, faviconOrigin, favicons } from '../stores/favicons'
   import { mayAutofill, normalizePanelUrl } from '../lib/panelUrl'
   import type { Rect } from '../lib/layoutTree'
-  import { onMount } from 'svelte'
+  import { onDestroy, onMount, tick } from 'svelte'
+  import { commandPaletteOpen } from '../stores/ui'
 
   // visible: this pane is part of the current layout (soloed tab, or a tiled
   // pane in split mode). rect: its box in percent when tiled, else null.
@@ -16,6 +17,17 @@
   export let rect: Rect | null = null
 
   let iframeEl: HTMLIFrameElement | null = null
+  let frameWrapEl: HTMLDivElement | null = null
+
+  // A panel in an iframe is a framed browsing context, and every dashboard
+  // worth embedding refuses that with X-Frame-Options or a frame-ancestors
+  // CSP. Where the platform can give us a real WebKit view of its own, the
+  // panel is rendered there — layered over this pane by the backend — and this
+  // component only measures the rectangle it should occupy. Elsewhere the
+  // iframe stays, which is fine for panels that permit framing.
+  let nativeView = false
+  let nativeOpened = false
+  let panelViewTimers: ReturnType<typeof setTimeout>[] = []
   let autofillTimers: ReturnType<typeof setTimeout>[] = []
   let credentials: { email: string; password: string } | null = null
   let credentialsHostId: number | undefined
@@ -58,6 +70,11 @@
     credentials = null
     credentialsHostId = undefined
     clearAutofillTimers()
+    if (nativeView && nativeOpened) {
+      void backend.reloadPanelView(tabId).catch(() => {})
+      scheduleNativeAutofill()
+      return
+    }
     if (iframeEl) iframeEl.src = frameUrl
   }
 
@@ -109,6 +126,72 @@
     }
   }
 
+  // The native view is positioned in the window, not in the document, so every
+  // layout change has to be pushed to it: pane resizes, split drags, tab
+  // switches, window resizes. Anything the app draws on top (the command
+  // palette, dialogs) would end up *under* a native widget, so the view is
+  // hidden while those are open rather than fought with over z-order.
+  function reportBounds(): void {
+    if (!nativeView || !nativeOpened || !frameWrapEl) return
+    const rect = frameWrapEl.getBoundingClientRect()
+    const onScreen = visible && !$commandPaletteOpen && rect.width > 0 && rect.height > 0
+    void backend
+      .setPanelViewBounds(
+        tabId,
+        Math.round(rect.left),
+        Math.round(rect.top),
+        Math.round(rect.width),
+        Math.round(rect.height),
+        window.innerWidth,
+        window.innerHeight,
+        onScreen
+      )
+      .catch(() => {})
+  }
+
+  async function openNativeView(): Promise<void> {
+    if (!nativeView || nativeOpened || frameUrl === 'about:blank') return
+    try {
+      await backend.openPanelView(tabId, frameUrl)
+    } catch {
+      // A URL the backend refuses simply leaves the pane empty; the toolbar
+      // still offers opening it in the real browser.
+      return
+    }
+    nativeOpened = true
+    await tick()
+    reportBounds()
+    scheduleNativeAutofill()
+  }
+
+  // There is no load event to hang autofill on from here, so the same short
+  // ladder the iframe path uses is replayed against the view instead.
+  function scheduleNativeAutofill(): void {
+    clearPanelViewTimers()
+    if (!resourceHostId || !mayAutofill(frameUrl)) return
+    for (const delay of [400, 1200, 2500, 5000]) {
+      panelViewTimers.push(
+        setTimeout(() => void backend.autofillPanelView(tabId, resourceHostId!).catch(() => {}), delay)
+      )
+    }
+  }
+
+  function clearPanelViewTimers(): void {
+    for (const timer of panelViewTimers) clearTimeout(timer)
+    panelViewTimers = []
+  }
+
+  // Re-measure whenever anything that moves the pane changes.
+  $: if (nativeView && nativeOpened) {
+    void [visible, rect, $commandPaletteOpen]
+    void tick().then(reportBounds)
+  }
+
+  onDestroy(() => {
+    clearPanelViewTimers()
+    if (nativeView && nativeOpened) void backend.closePanelView(tabId).catch(() => {})
+  })
+
   onMount(() => {
     const handleAutofillComplete = (event: MessageEvent) => {
       if (event.source !== iframeEl?.contentWindow) return
@@ -122,8 +205,24 @@
       clearAutofillTimers()
     }
     window.addEventListener('message', handleAutofillComplete)
+
+    let observer: ResizeObserver | undefined
+    void backend
+      .panelViewsSupported()
+      .then((supported) => {
+        nativeView = supported
+        if (!supported) return
+        observer = new ResizeObserver(() => reportBounds())
+        if (frameWrapEl) observer.observe(frameWrapEl)
+        window.addEventListener('resize', reportBounds)
+        return openNativeView()
+      })
+      .catch(() => {})
+
     return () => {
       window.removeEventListener('message', handleAutofillComplete)
+      window.removeEventListener('resize', reportBounds)
+      observer?.disconnect()
       clearAutofillTimers()
     }
   })
@@ -157,22 +256,24 @@
       <Icon name="link" size={12} />
     </button>
   </div>
-  <div class="frame-wrap">
+  <div class="frame-wrap" bind:this={frameWrapEl}>
     <!-- A cross-origin iframe cannot reach the app's Wails bindings, so the
          panel is isolated from the SSH backend — but that holds only because
          the src is a real http(s) URL. A javascript: URL here would run in this
          document's own origin instead, which is why frameUrl is vetted rather
          than passed through. -->
-    <iframe
-      bind:this={iframeEl}
-      src={frameUrl}
-      title={$t('browser.frameTitle')}
-      data-tab-id={tabId}
-      on:load={autofill}
-    ></iframe>
-    <p class="blocked-hint">
-      {$t('browser.blockedHint')}
-    </p>
+    {#if !nativeView}
+      <iframe
+        bind:this={iframeEl}
+        src={frameUrl}
+        title={$t('browser.frameTitle')}
+        data-tab-id={tabId}
+        on:load={autofill}
+      ></iframe>
+      <p class="blocked-hint">
+        {$t('browser.blockedHint')}
+      </p>
+    {/if}
   </div>
 </div>
 

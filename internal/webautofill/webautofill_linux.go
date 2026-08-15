@@ -60,7 +60,7 @@ func Install(nativeWindow unsafe.Pointer) {
 	if nativeWindow == nil {
 		return
 	}
-	source := C.CString(bridgeScript)
+	source := C.CString(Script)
 	defer C.free(unsafe.Pointer(source))
 	C.ssh_first_install_autofill((*C.GtkWindow)(nativeWindow), source)
 }

@@ -47,6 +47,23 @@ export const backend = {
   hostUsername: (id: number): Promise<string> => Backend.HostUsername(id),
   hostPassword: (id: number): Promise<string> => Backend.HostPassword(id),
   webPassword: (id: number): Promise<string> => Backend.WebPassword(id),
+
+  panelViewsSupported: (): Promise<boolean> => Backend.PanelViewsSupported(),
+  openPanelView: (tabId: string, url: string): Promise<void> => Backend.OpenPanelView(tabId, url),
+  setPanelViewBounds: (
+    tabId: string,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    viewportWidth: number,
+    viewportHeight: number,
+    visible: boolean
+  ): Promise<void> =>
+    Backend.SetPanelViewBounds(tabId, x, y, width, height, viewportWidth, viewportHeight, visible),
+  closePanelView: (tabId: string): Promise<void> => Backend.ClosePanelView(tabId),
+  reloadPanelView: (tabId: string): Promise<void> => Backend.ReloadPanelView(tabId),
+  autofillPanelView: (tabId: string, hostId: number): Promise<void> => Backend.AutofillPanelView(tabId, hostId),
   setWebPassword: (id: number, password: string): Promise<void> => Backend.SetWebPassword(id, password),
 
   listCredentials: (): Promise<Credential[]> => Backend.ListCredentials() as unknown as Promise<Credential[]>,

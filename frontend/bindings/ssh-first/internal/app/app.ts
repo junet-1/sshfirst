@@ -29,6 +29,19 @@ export function AcknowledgeTerminalOutput(tabID: string, sessionGeneration: stri
     return $Call.ByID(505654484, tabID, sessionGeneration, sequence);
 }
 
+/**
+ * AutofillPanelView delivers a web host's saved credentials into a panel view.
+ * 
+ * A panel view is a top-level document, so the frontend cannot postMessage into
+ * it the way it does with an iframe. Instead the credentials are handed to the
+ * bridge script already running in that page — and only that page. They never
+ * pass through the application's own frontend, which is one fewer place a saved
+ * password exists at all.
+ */
+export function AutofillPanelView(tabID: string, hostID: number): $CancellablePromise<void> {
+    return $Call.ByID(2476792984, tabID, hostID);
+}
+
 export function CancelKeyboardInteractivePrompt(requestID: string): $CancellablePromise<void> {
     return $Call.ByID(1764275178, requestID);
 }
@@ -54,6 +67,13 @@ export function CancelPasswordPrompt(requestID: string): $CancellablePromise<voi
  */
 export function CancelRsync(transferID: string): $CancellablePromise<void> {
     return $Call.ByID(2955230430, transferID);
+}
+
+/**
+ * ClosePanelView destroys a panel view when its tab goes away.
+ */
+export function ClosePanelView(tabID: string): $CancellablePromise<void> {
+    return $Call.ByID(2581687528, tabID);
 }
 
 /**
@@ -382,11 +402,27 @@ export function NewTerminalTab(connectionID: string, cols: number, rows: number)
 }
 
 /**
+ * OpenPanelView creates the view for a browser tab and starts loading url. The
+ * URL is validated exactly like a stored panel URL, so a hostile scheme cannot
+ * reach a real browsing context either.
+ */
+export function OpenPanelView(tabID: string, url: string): $CancellablePromise<void> {
+    return $Call.ByID(2288946702, tabID, url);
+}
+
+/**
  * OpenToolWindow opens or focuses a native top-level window. entityID and
  * parentID use -1 for "not set" to keep the generated frontend binding simple.
  */
 export function OpenToolWindow(kind: string, entityID: number, parentID: number): $CancellablePromise<void> {
     return $Call.ByID(561227557, kind, entityID, parentID);
+}
+
+/**
+ * PanelViewsSupported tells the frontend which rendering path to use.
+ */
+export function PanelViewsSupported(): $CancellablePromise<boolean> {
+    return $Call.ByID(1328899775);
 }
 
 /**
@@ -438,6 +474,13 @@ export function Reconnect(connectionID: string): $CancellablePromise<$models.Con
     return $Call.ByID(647010644, connectionID).then(($result: any) => {
         return $$createType0($result);
     });
+}
+
+/**
+ * ReloadPanelView reloads a panel's page.
+ */
+export function ReloadPanelView(tabID: string): $CancellablePromise<void> {
+    return $Call.ByID(3398465453, tabID);
 }
 
 /**
@@ -519,6 +562,14 @@ export function SendToTab(tabID: string, text: string): $CancellablePromise<void
  */
 export function SetFavorite(id: number, favorite: boolean): $CancellablePromise<void> {
     return $Call.ByID(1480923037, id, favorite);
+}
+
+/**
+ * SetPanelViewBounds positions a panel view over its pane. Coordinates are CSS
+ * pixels measured in the main window's viewport; the native side scales them.
+ */
+export function SetPanelViewBounds(tabID: string, x: number, y: number, width: number, height: number, viewportWidth: number, viewportHeight: number, visible: boolean): $CancellablePromise<void> {
+    return $Call.ByID(1636460841, tabID, x, y, width, height, viewportWidth, viewportHeight, visible);
 }
 
 /**

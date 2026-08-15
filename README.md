@@ -78,9 +78,11 @@ system, not like a website in a window.
 ### Web panels
 
 - Open a server's admin panel as an embedded tab right next to its terminal
+- Rendered in a real browser view, not an iframe, so panels that refuse framing
+  (Cloudflare, GitHub, most SaaS dashboards) open like any other tab
 - Optional email/username and password autofill with automatic sign-in
 - Loaded straight from your machine, with no proxy in between
-- One click to fall back to your normal browser for panels that refuse embedding
+- One click to open the panel in your normal browser instead
 
 ### Workspaces
 

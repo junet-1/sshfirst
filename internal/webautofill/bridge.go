@@ -7,11 +7,11 @@
 // WKWebView on macOS — but both inject the identical script below.
 package webautofill
 
-// bridgeScript intentionally contains no credentials. The trusted application
+// Script intentionally contains no credentials. The trusted application
 // shell sends credentials with postMessage to the configured panel origin only.
 // The remote page could read values after they are placed in its own inputs
 // anyway; no other origin receives the message.
-const bridgeScript = `(() => {
+const Script = `(() => {
   if (window.__sshFirstAutofillBridge) return;
   window.__sshFirstAutofillBridge = true;
 
@@ -151,7 +151,14 @@ const bridgeScript = `(() => {
 
   addEventListener('message', (event) => {
     const data = event.data;
-    if (window === top || event.source !== parent || !data || data.type !== 'ssh-first:web-autofill') return;
+    // Two ways the credential arrives. In an iframe panel the app shell posts
+    // it from the parent frame. In a native panel view the page is top-level,
+    // so the app injects the message into the document itself and window,
+    // parent and top are all the same object — only code already running in
+    // this document can do that, and such code could read the form anyway.
+    const fromParent = window !== top && event.source === parent;
+    const fromSelf = window === top && event.source === window;
+    if (!(fromParent || fromSelf) || !data || data.type !== 'ssh-first:web-autofill') return;
     if (data.targetOrigin !== location.origin || typeof data.email !== 'string' || typeof data.password !== 'string') return;
     if (submitted) return;
 
