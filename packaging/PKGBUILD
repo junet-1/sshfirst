@@ -1,6 +1,6 @@
 # Maintainer: Julian <juwolf11@googlemail.com>
 pkgname=ssh-first
-pkgver=0.3.2
+pkgver=0.3.3
 pkgrel=1
 pkgdesc="A focused SSH and SFTP workspace"
 arch=('x86_64')
