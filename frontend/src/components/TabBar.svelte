@@ -65,7 +65,20 @@
     return $connections[connectionId]?.status ?? 'disconnected'
   }
 
-  function onTabMouseDown(event: MouseEvent, tabId: string): void {
+  // Middle click closes a tab — but on X11 it also pastes the primary
+  // selection, and that has to be suppressed on the press. Closing on the press
+  // as well was the bug: the tab vanished, whatever moved under the pointer
+  // received the rest of the click, and the selection landed in it — usually
+  // the Quick Connect field, which takes focus once the last tab is gone.
+  // Closing on auxclick instead means the pointer is still over the tab when
+  // the click completes, and a tab is not an editable target.
+  function onTabMouseDown(event: MouseEvent): void {
+    if (event.button !== 1) return
+    event.preventDefault()
+    event.stopPropagation()
+  }
+
+  function onTabAuxClick(event: MouseEvent, tabId: string): void {
     if (event.button !== 1) return
     event.preventDefault()
     event.stopPropagation()
@@ -168,7 +181,8 @@
       tabindex={$activeTabId === tab.tabId ? 0 : -1}
       draggable={renamingTabId !== tab.tabId}
       on:click={() => selectTab(tab.tabId, tab.connectionId, tab.kind)}
-      on:mousedown={(e) => onTabMouseDown(e, tab.tabId)}
+      on:mousedown={onTabMouseDown}
+      on:auxclick={(e) => onTabAuxClick(e, tab.tabId)}
       on:contextmenu={(e) => openContextMenu(e, tab.tabId, tab.connectionId, tab.kind)}
       on:dblclick={() => startRename(tab.tabId, tab.title)}
       on:dragstart={(event) => onTabDragStart(event, tab.tabId)}
