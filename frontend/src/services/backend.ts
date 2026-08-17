@@ -10,6 +10,7 @@ import type { ConnectionInfo, SFTPDirectory, SFTPEntry, TabInfo } from '../types
 import type { Snippet, SnippetInput } from '../types/snippet'
 import type { TransferRequest } from '../types/transfer'
 import type { ActiveForward, ForwardRule, ForwardRuleInput } from '../types/forwarding'
+import type { DiscoveredForward, DiscoveredPort } from '../types/discovery'
 
 export interface SettingResult {
   value: string
@@ -163,7 +164,12 @@ export const backend = {
     Backend.StartForward(connectionId, ruleId) as unknown as Promise<ActiveForward>,
   stopForward: (connectionId: string, ruleId: number): Promise<void> => Backend.StopForward(connectionId, ruleId),
   listActiveForwards: (connectionId: string): Promise<ActiveForward[]> =>
-    Backend.ListActiveForwards(connectionId) as unknown as Promise<ActiveForward[]>
+    Backend.ListActiveForwards(connectionId) as unknown as Promise<ActiveForward[]>,
+
+  discoverPorts: (connectionId: string): Promise<DiscoveredPort[]> =>
+    Backend.DiscoverPorts(connectionId) as unknown as Promise<DiscoveredPort[]>,
+  forwardDiscoveredPort: (connectionId: string, port: number, address: string): Promise<DiscoveredForward> =>
+    Backend.ForwardDiscoveredPort(connectionId, port, address) as unknown as Promise<DiscoveredForward>
 }
 
 /** Subscribes to a Wails runtime event; call the returned function to unsubscribe just this listener. */

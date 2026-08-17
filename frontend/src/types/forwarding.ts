@@ -35,6 +35,7 @@ export interface ForwardStatusEvent {
   ruleId: number
   active: boolean
   kind?: string
+  label?: string
   boundAddr?: string
   error?: string
 }

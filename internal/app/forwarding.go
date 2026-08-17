@@ -31,6 +31,7 @@ type ForwardStatusEvent struct {
 	RuleID       int64  `json:"ruleId"`
 	Active       bool   `json:"active"`
 	Kind         string `json:"kind,omitempty"`
+	Label        string `json:"label,omitempty"`
 	BoundAddr    string `json:"boundAddr,omitempty"`
 	Error        string `json:"error,omitempty"`
 }
@@ -133,6 +134,7 @@ func (a *App) StartForward(connectionID string, ruleID int64) (ActiveForward, er
 		RuleID:       ruleID,
 		Active:       true,
 		Kind:         info.Kind,
+		Label:        info.Label,
 		BoundAddr:    info.BoundAddr,
 	})
 	return info, nil

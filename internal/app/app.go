@@ -50,6 +50,10 @@ type App struct {
 	tabs        map[string]*tabState
 	output      *terminalOutputBroker
 
+	// Ad-hoc forwards opened from a port scan get negative IDs from here, to
+	// stay clear of the positive row IDs of persisted rules.
+	adhocForwards atomic.Int64
+
 	pending   *pendingPrompts
 	transfers *transferManager
 }

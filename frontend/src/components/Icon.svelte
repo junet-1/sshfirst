@@ -52,22 +52,41 @@
     folderTree: 'M2 3.5h4l1 1.2h7v7.8H2zM5 8.5h6M5 10.5h4',
     play: 'M4 3l9 5-9 5z'
   }
+
+  // Glyphs taken verbatim from Lucide. They are drawn on a 24×24 grid with a
+  // heavier stroke than the hand-drawn set above, and several need more than
+  // one subpath, so they keep their own geometry instead of being rescaled by
+  // hand into the 16×16 grid.
+  const lucidePaths: Record<string, string[]> = {
+    container: [
+      'M22 7.7c0-.6-.4-1.2-.8-1.5l-6.3-3.9a1.72 1.72 0 0 0-1.7 0l-10.3 6c-.5.3-.9.9-.9 1.5v6.6c0 .5.4 1.2.8 1.5l6.3 3.9a1.72 1.72 0 0 0 1.7 0l10.3-6c.5-.3.9-1 .9-1.5Z',
+      'M10 21.9V14L2.1 9.1',
+      'M10 14l11.9-6.9',
+      'M14 19.8v-8.1',
+      'M18 17.5V9.4'
+    ]
+  }
+
+  $: lucide = lucidePaths[name]
+  $: shapes = lucide ?? [paths[name] ?? '']
 </script>
 
 <svg
   width={size}
   height={size}
-  viewBox="0 0 16 16"
+  viewBox={lucide ? '0 0 24 24' : '0 0 16 16'}
   fill="none"
   stroke="currentColor"
-  stroke-width="1.3"
+  stroke-width={lucide ? 2 : 1.3}
   stroke-linecap="round"
   stroke-linejoin="round"
   class="icon"
   class:filled={name === 'star-filled'}
   aria-hidden="true"
 >
-  <path d={paths[name] ?? ''} />
+  {#each shapes as d}
+    <path {d} />
+  {/each}
 </svg>
 
 <style>

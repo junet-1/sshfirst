@@ -12,6 +12,9 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as discovery$0 from "../discovery/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as sftp$0 from "../sftp/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -213,6 +216,16 @@ export function Disconnect(connectionID: string): $CancellablePromise<void> {
     return $Call.ByID(938053461, connectionID);
 }
 
+/**
+ * DiscoverPorts reports what the connected host is listening on, so the user
+ * can reach a service without working out the ssh -L invocation themselves.
+ */
+export function DiscoverPorts(connectionID: string): $CancellablePromise<discovery$0.Listener[]> {
+    return $Call.ByID(2356604620, connectionID).then(($result: any) => {
+        return $$createType7($result);
+    });
+}
+
 export function DownloadSFTP(tabID: string, remotePath: string, localDir: string): $CancellablePromise<string> {
     return $Call.ByID(1697197390, tabID, remotePath, localDir);
 }
@@ -236,6 +249,17 @@ export function Favicon(rawURL: string): $CancellablePromise<string> {
 }
 
 /**
+ * ForwardDiscoveredPort opens a local forward to a port found by DiscoverPorts,
+ * binding a free local port chosen by the OS. Asking for the same remote port
+ * twice returns the existing tunnel rather than stacking a second one.
+ */
+export function ForwardDiscoveredPort(connectionID: string, port: number, address: string): $CancellablePromise<$models.DiscoveredForward> {
+    return $Call.ByID(1608244805, connectionID, port, address).then(($result: any) => {
+        return $$createType8($result);
+    });
+}
+
+/**
  * GetHost returns one host by ID, for the inspector panel.
  */
 export function GetHost(id: number): $CancellablePromise<storage$0.Host> {
@@ -250,7 +274,7 @@ export function GetHost(id: number): $CancellablePromise<storage$0.Host> {
  */
 export function GetSetting(key: string): $CancellablePromise<$models.SettingResult> {
     return $Call.ByID(2886531567, key).then(($result: any) => {
-        return $$createType6($result);
+        return $$createType9($result);
     });
 }
 
@@ -279,7 +303,7 @@ export function HostUsername(hostID: number): $CancellablePromise<string> {
  */
 export function ImportSSHConfig(): $CancellablePromise<$models.ImportResult> {
     return $Call.ByID(1364424794).then(($result: any) => {
-        return $$createType7($result);
+        return $$createType10($result);
     });
 }
 
@@ -296,7 +320,7 @@ export function IsFullscreen(): $CancellablePromise<boolean> {
  */
 export function ListActiveForwards(connectionID: string): $CancellablePromise<$models.ActiveForward[]> {
     return $Call.ByID(3958266559, connectionID).then(($result: any) => {
-        return $$createType9($result);
+        return $$createType12($result);
     });
 }
 
@@ -306,7 +330,7 @@ export function ListActiveForwards(connectionID: string): $CancellablePromise<$m
  */
 export function ListCredentials(): $CancellablePromise<storage$0.Credential[]> {
     return $Call.ByID(3041955671).then(($result: any) => {
-        return $$createType10($result);
+        return $$createType13($result);
     });
 }
 
@@ -315,7 +339,7 @@ export function ListCredentials(): $CancellablePromise<storage$0.Credential[]> {
  */
 export function ListFolders(): $CancellablePromise<storage$0.Folder[]> {
     return $Call.ByID(797959184).then(($result: any) => {
-        return $$createType11($result);
+        return $$createType14($result);
     });
 }
 
@@ -324,7 +348,7 @@ export function ListFolders(): $CancellablePromise<storage$0.Folder[]> {
  */
 export function ListForwardRules(hostID: number): $CancellablePromise<storage$0.ForwardRule[]> {
     return $Call.ByID(3131835115, hostID).then(($result: any) => {
-        return $$createType12($result);
+        return $$createType15($result);
     });
 }
 
@@ -333,7 +357,7 @@ export function ListForwardRules(hostID: number): $CancellablePromise<storage$0.
  */
 export function ListHosts(): $CancellablePromise<storage$0.Host[]> {
     return $Call.ByID(1253404726).then(($result: any) => {
-        return $$createType13($result);
+        return $$createType16($result);
     });
 }
 
@@ -343,7 +367,7 @@ export function ListHosts(): $CancellablePromise<storage$0.Host[]> {
  */
 export function ListSFTP(tabID: string, remotePath: string): $CancellablePromise<$models.SFTPDirectory> {
     return $Call.ByID(1921366410, tabID, remotePath).then(($result: any) => {
-        return $$createType14($result);
+        return $$createType17($result);
     });
 }
 
@@ -353,13 +377,13 @@ export function ListSFTP(tabID: string, remotePath: string): $CancellablePromise
  */
 export function ListSnippets(hostID: number): $CancellablePromise<storage$0.Snippet[]> {
     return $Call.ByID(1143538589, hostID).then(($result: any) => {
-        return $$createType15($result);
+        return $$createType18($result);
     });
 }
 
 export function ListWorkspaces(): $CancellablePromise<string[]> {
     return $Call.ByID(1353269229).then(($result: any) => {
-        return $$createType16($result);
+        return $$createType19($result);
     });
 }
 
@@ -397,7 +421,7 @@ export function MoveHostToFolder(hostID: number, folderID: number | null): $Canc
  */
 export function NewTerminalTab(connectionID: string, cols: number, rows: number): $CancellablePromise<$models.TabInfo> {
     return $Call.ByID(1210917242, connectionID, cols, rows).then(($result: any) => {
-        return $$createType17($result);
+        return $$createType20($result);
     });
 }
 
@@ -443,7 +467,7 @@ export function PickFile(): $CancellablePromise<string> {
 
 export function PickIdentityFiles(): $CancellablePromise<string[]> {
     return $Call.ByID(1118325447).then(($result: any) => {
-        return $$createType16($result);
+        return $$createType19($result);
     });
 }
 
@@ -592,7 +616,7 @@ export function SetWebPassword(hostID: number, password: string): $CancellablePr
  */
 export function StartForward(connectionID: string, ruleID: number): $CancellablePromise<$models.ActiveForward> {
     return $Call.ByID(3061110106, connectionID, ruleID).then(($result: any) => {
-        return $$createType8($result);
+        return $$createType11($result);
     });
 }
 
@@ -676,7 +700,7 @@ export function UpdateSnippet(id: number, input: storage$0.SnippetInput): $Cance
 
 export function UploadSFTP(tabID: string, localPath: string, remoteDir: string): $CancellablePromise<sftp$0.Entry> {
     return $Call.ByID(858723587, tabID, localPath, remoteDir).then(($result: any) => {
-        return $$createType18($result);
+        return $$createType21($result);
     });
 }
 
@@ -703,16 +727,19 @@ const $$createType2 = storage$0.Folder.createFrom;
 const $$createType3 = storage$0.ForwardRule.createFrom;
 const $$createType4 = storage$0.Host.createFrom;
 const $$createType5 = storage$0.Snippet.createFrom;
-const $$createType6 = $models.SettingResult.createFrom;
-const $$createType7 = $models.ImportResult.createFrom;
-const $$createType8 = $models.ActiveForward.createFrom;
-const $$createType9 = $Create.Array($$createType8);
-const $$createType10 = $Create.Array($$createType1);
-const $$createType11 = $Create.Array($$createType2);
-const $$createType12 = $Create.Array($$createType3);
-const $$createType13 = $Create.Array($$createType4);
-const $$createType14 = $models.SFTPDirectory.createFrom;
-const $$createType15 = $Create.Array($$createType5);
-const $$createType16 = $Create.Array($Create.Any);
-const $$createType17 = $models.TabInfo.createFrom;
-const $$createType18 = sftp$0.Entry.createFrom;
+const $$createType6 = discovery$0.Listener.createFrom;
+const $$createType7 = $Create.Array($$createType6);
+const $$createType8 = $models.DiscoveredForward.createFrom;
+const $$createType9 = $models.SettingResult.createFrom;
+const $$createType10 = $models.ImportResult.createFrom;
+const $$createType11 = $models.ActiveForward.createFrom;
+const $$createType12 = $Create.Array($$createType11);
+const $$createType13 = $Create.Array($$createType1);
+const $$createType14 = $Create.Array($$createType2);
+const $$createType15 = $Create.Array($$createType3);
+const $$createType16 = $Create.Array($$createType4);
+const $$createType17 = $models.SFTPDirectory.createFrom;
+const $$createType18 = $Create.Array($$createType5);
+const $$createType19 = $Create.Array($Create.Any);
+const $$createType20 = $models.TabInfo.createFrom;
+const $$createType21 = sftp$0.Entry.createFrom;

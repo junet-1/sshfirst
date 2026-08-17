@@ -74,6 +74,10 @@ system, not like a website in a window.
 - Built-in SFTP browser with uploads, downloads and drag-and-drop transfers
 - SSH port forwarding: local (`-L`), remote (`-R`) and dynamic SOCKS5 (`-D`),
   defined per host and toggled per connection
+- Port discovery: see what a connected host is listening on, including the
+  services bound to loopback that are invisible from outside the box, and open
+  one with a click — the tunnel, and for web interfaces the panel tab, are set
+  up for you
 
 ### Web panels
 

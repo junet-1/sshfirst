@@ -122,6 +122,51 @@ export enum ConnectionStatus {
 };
 
 /**
+ * DiscoveredForward is an ad-hoc tunnel opened straight from a scan result.
+ */
+export class DiscoveredForward {
+    /**
+     * RuleID is negative: an ad-hoc forward has no persisted rule behind it,
+     * but StopForward and ListActiveForwards address it the same way.
+     */
+    "ruleId": number;
+
+    /**
+     * LocalAddr is what the tunnel actually bound, e.g. "127.0.0.1:43117".
+     */
+    "localAddr": string;
+
+    /**
+     * Port is the remote port being forwarded, so the frontend can match the
+     * result back to the scan row that triggered it.
+     */
+    "port": number;
+
+    /** Creates a new DiscoveredForward instance. */
+    constructor($$source: Partial<DiscoveredForward> = {}) {
+        if (!("ruleId" in $$source)) {
+            this["ruleId"] = 0;
+        }
+        if (!("localAddr" in $$source)) {
+            this["localAddr"] = "";
+        }
+        if (!("port" in $$source)) {
+            this["port"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DiscoveredForward instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DiscoveredForward {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DiscoveredForward($$parsedSource as Partial<DiscoveredForward>);
+    }
+}
+
+/**
  * ImportResult summarizes an ~/.ssh/config import run.
  */
 export class ImportResult {

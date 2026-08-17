@@ -10,6 +10,7 @@ export {
     ActiveForward,
     ConnectionInfo,
     ConnectionStatus,
+    DiscoveredForward,
     ImportResult,
     SFTPDirectory,
     SettingResult,

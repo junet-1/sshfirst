@@ -98,7 +98,7 @@ export function initForwardingEvents(): void {
       setActive(evt.connectionId, {
         ruleId: evt.ruleId,
         kind: evt.kind ?? '',
-        label: '',
+        label: evt.label ?? '',
         boundAddr: evt.boundAddr ?? ''
       })
     } else {

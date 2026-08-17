@@ -62,6 +62,7 @@
   import { loadSnippets } from './stores/snippets'
   import { initTransferEvents, transferDialogHostId } from './stores/transfer'
   import { forwardingDialogHostId, initForwardingEvents } from './stores/forwarding'
+  import { initDiscoveryEvents } from './stores/discovery'
   import { currentToolWindowKind } from './services/windowing'
   import { withErrorBanner } from './stores/notifications'
   import { workspaceDialogOpen } from './stores/workspaces'
@@ -81,6 +82,7 @@
     initPromptEvents()
     initTransferEvents()
     initForwardingEvents()
+    initDiscoveryEvents()
     void loadHosts()
     void loadSettings()
     void loadSnippets(0)
